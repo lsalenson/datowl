@@ -1,0 +1,709 @@
+{
+  "method": "docs/benchmarks/README.md",
+  "generated_at": "2026-10-31T14:56:15+00:00",
+  "machine": {
+    "cpu": "Intel(R) Xeon(R) Processor @ 2.10GHz",
+    "vcpus": 4,
+    "hypervisor": "KVM",
+    "ram_gb": 15.7,
+    "gpu": "none (software rendering: Xvfb + Mesa llvmpipe)",
+    "os": "Ubuntu 24.04.5 LTS",
+    "kernel": "6.18.44-fc-v185",
+    "display": "Xvfb 1920x1080x24 + Openbox 3.6.1-12build5",
+    "postgresql": "16.15 (Ubuntu 16.15-0ubuntu0.24.04.1)"
+  },
+  "apps": {
+    "datowl": {
+      "version": "0.1.0",
+      "commit": "b0c686dd1943321d90c792785ba8b3a3cd0a8cc4",
+      "build": "release, `npx tauri build --no-bundle` (lto=thin, codegen-units=1, strip)",
+      "runtime": "WebKitGTK 2.52.6-0ubuntu0.24.04.1"
+    },
+    "datagrip": {
+      "version": "2026.2.6.1",
+      "build": "262.11879.103",
+      "source": "https://download.jetbrains.com/datagrip/datagrip-2026.2.6.1.tar.gz",
+      "runtime": "JBR-25.0.4.1+1-508.41-nomod"
+    },
+    "dbeaver": {
+      "version": "26.2.3",
+      "build": "26.2.3-202610181708",
+      "source": "https://github.com/dbeaver/dbeaver/releases/download/26.2.3/dbeaver-ce-26.2.3-linux-x86_64.tar.gz",
+      "runtime": "Java 25.0.4.1"
+    },
+    "dbeaver_configured": {
+      "version": "26.2.3",
+      "build": "26.2.3-202610181708",
+      "source": "https://github.com/dbeaver/dbeaver/releases/download/26.2.3/dbeaver-ce-26.2.3-linux-x86_64.tar.gz",
+      "runtime": "Java 25.0.4.1",
+      "profile": "first-run 'Product Configuration' wizard completed with its defaults (prepare_dbeaver_profile.sh)"
+    }
+  },
+  "metrics": {
+    "datowl": {
+      "first_window": {
+        "median": 203,
+        "unit": "ms",
+        "runs": 5,
+        "values": [
+          203,
+          149,
+          216,
+          199,
+          211
+        ],
+        "description": "exec -> first viewable top-level window (splash included), warm page cache"
+      },
+      "visually_complete": {
+        "median": 2290,
+        "unit": "ms",
+        "runs": 5,
+        "values": [
+          2247,
+          2129,
+          2642,
+          2290,
+          2387
+        ],
+        "description": "exec -> screen identical (>= 98 % of the cells the app changes) to its state at +30 s, warm page cache"
+      },
+      "cpu_time_30s": {
+        "median": 7.763,
+        "unit": "s",
+        "runs": 5,
+        "values": [
+          7.383,
+          7.543,
+          8.453,
+          8.031,
+          7.763
+        ],
+        "description": "CPU time (user+sys) of every process of the app, exec -> +30 s"
+      },
+      "idle_cpu": {
+        "median": 0.03,
+        "unit": "% of one core",
+        "runs": 5,
+        "values": [
+          0.03,
+          0.03,
+          0.03,
+          0.03,
+          0.03
+        ],
+        "description": "mean CPU between +20 s and +30 s"
+      },
+      "memory_pss": {
+        "median": 473.2,
+        "unit": "MB",
+        "runs": 5,
+        "values": [
+          473.2,
+          472.1,
+          474.2,
+          473.3,
+          469.5
+        ],
+        "description": "PSS summed over every process of the app at +30 s (MB = 1024*1024 bytes)"
+      },
+      "first_screen": [
+        {
+          "windows": [
+            "Datowl"
+          ],
+          "runs": 5
+        }
+      ],
+      "processes_at_30s": [
+        "Datowl",
+        "WebKitNetworkPr",
+        "WebKitWebProces"
+      ],
+      "first_window_cold": {
+        "median": 324,
+        "unit": "ms",
+        "runs": 5,
+        "values": [
+          274,
+          316,
+          337,
+          399,
+          324
+        ],
+        "description": "exec -> first viewable top-level window (splash included), cold page cache"
+      },
+      "visually_complete_cold": {
+        "median": 2842,
+        "unit": "ms",
+        "runs": 5,
+        "values": [
+          2676,
+          2848,
+          3043,
+          2842,
+          2793
+        ],
+        "description": "exec -> screen identical (>= 98 % of the cells the app changes) to its state at +30 s, cold page cache"
+      },
+      "cpu_time_30s_cold": {
+        "median": 9.075,
+        "unit": "s",
+        "runs": 5,
+        "values": [
+          8.437,
+          9.075,
+          9.521,
+          8.996,
+          9.159
+        ],
+        "description": "CPU time (user+sys) of every process of the app, exec -> +30 s"
+      },
+      "idle_cpu_cold": {
+        "median": 0.03,
+        "unit": "% of one core",
+        "runs": 5,
+        "values": [
+          0.03,
+          0.03,
+          0.03,
+          0.03,
+          0.03
+        ],
+        "description": "mean CPU between +20 s and +30 s"
+      },
+      "memory_pss_cold": {
+        "median": 469.2,
+        "unit": "MB",
+        "runs": 5,
+        "values": [
+          471.7,
+          469.2,
+          469.2,
+          465.4,
+          465.2
+        ],
+        "description": "PSS summed over every process of the app at +30 s (MB = 1024*1024 bytes)"
+      },
+      "disk_size": {
+        "value": 14.9,
+        "unit": "MB",
+        "description": "apparent size (du -sb) of what is installed; Datowl: the single binary"
+      },
+      "disk_size_shared_runtime": {
+        "value": 128.0,
+        "unit": "MB",
+        "description": "Installed-Size of libwebkit2gtk-4.1-0 + libjavascriptcoregtk-4.1-0 (system packages Datowl needs on Linux and which are not counted above; on macOS the system WebView is used)"
+      },
+      "query_select_200k": {
+        "scope": "Datowl PostgreSQL engine (datowl-postgres) without UI: `SELECT * FROM bench_rows`, 200 000 rows x 3 columns",
+        "first_row": {
+          "median": 1.848,
+          "unit": "ms",
+          "runs": 5,
+          "values": [
+            1.6,
+            1.657,
+            1.953,
+            2.137,
+            1.848
+          ],
+          "description": "execute -> first row in the sink (page of 500)"
+        },
+        "first_page_500": {
+          "median": 2.146,
+          "unit": "ms",
+          "runs": 5,
+          "values": [
+            1.826823,
+            1.943697,
+            2.3119270000000003,
+            2.343372,
+            2.145934
+          ],
+          "description": "execute -> first page of 500 rows complete (UI default page size)"
+        },
+        "all_rows": {
+          "median": 187.868,
+          "unit": "ms",
+          "runs": 5,
+          "values": [
+            296.724296,
+            188.345916,
+            116.098734,
+            187.868037,
+            128.93605599999998
+          ],
+          "description": "execute -> all 200 000 rows in the sink"
+        }
+      }
+    },
+    "datagrip": {
+      "first_window": {
+        "median": 4033,
+        "unit": "ms",
+        "runs": 5,
+        "values": [
+          3757,
+          4456,
+          4205,
+          3995,
+          4033
+        ],
+        "description": "exec -> first viewable top-level window (splash included), warm page cache"
+      },
+      "visually_complete": {
+        "median": 4366,
+        "unit": "ms",
+        "runs": 5,
+        "values": [
+          4038,
+          4849,
+          4515,
+          4366,
+          4362
+        ],
+        "description": "exec -> screen identical (>= 98 % of the cells the app changes) to its state at +30 s, warm page cache"
+      },
+      "cpu_time_30s": {
+        "median": 15.822,
+        "unit": "s",
+        "runs": 5,
+        "values": [
+          14.609,
+          17.633,
+          16.302,
+          15.822,
+          15.778
+        ],
+        "description": "CPU time (user+sys) of every process of the app, exec -> +30 s"
+      },
+      "idle_cpu": {
+        "median": 1.73,
+        "unit": "% of one core",
+        "runs": 5,
+        "values": [
+          1.69,
+          2.39,
+          1.86,
+          1.62,
+          1.73
+        ],
+        "description": "mean CPU between +20 s and +30 s"
+      },
+      "memory_pss": {
+        "median": 809.4,
+        "unit": "MB",
+        "runs": 5,
+        "values": [
+          801.8,
+          809.4,
+          803.2,
+          812.3,
+          812.7
+        ],
+        "description": "PSS summed over every process of the app at +30 s (MB = 1024*1024 bytes)"
+      },
+      "first_screen": [
+        {
+          "windows": [
+            "DataGrip User Agreement"
+          ],
+          "runs": 5
+        }
+      ],
+      "processes_at_30s": [
+        "datagrip",
+        "fsnotifier"
+      ],
+      "first_window_cold": {
+        "median": 5158,
+        "unit": "ms",
+        "runs": 5,
+        "values": [
+          5158,
+          4509,
+          4946,
+          5386,
+          5503
+        ],
+        "description": "exec -> first viewable top-level window (splash included), cold page cache"
+      },
+      "visually_complete_cold": {
+        "median": 5619,
+        "unit": "ms",
+        "runs": 5,
+        "values": [
+          5619,
+          4774,
+          5298,
+          5846,
+          5966
+        ],
+        "description": "exec -> screen identical (>= 98 % of the cells the app changes) to its state at +30 s, cold page cache"
+      },
+      "cpu_time_30s_cold": {
+        "median": 19.024,
+        "unit": "s",
+        "runs": 5,
+        "values": [
+          19.024,
+          17.191,
+          18.361,
+          19.747,
+          20.761
+        ],
+        "description": "CPU time (user+sys) of every process of the app, exec -> +30 s"
+      },
+      "idle_cpu_cold": {
+        "median": 2.12,
+        "unit": "% of one core",
+        "runs": 5,
+        "values": [
+          1.88,
+          2.22,
+          1.86,
+          2.12,
+          2.32
+        ],
+        "description": "mean CPU between +20 s and +30 s"
+      },
+      "memory_pss_cold": {
+        "median": 793.3,
+        "unit": "MB",
+        "runs": 5,
+        "values": [
+          789.0,
+          795.7,
+          793.3,
+          792.5,
+          810.0
+        ],
+        "description": "PSS summed over every process of the app at +30 s (MB = 1024*1024 bytes)"
+      },
+      "disk_size": {
+        "value": 2956.6,
+        "unit": "MB",
+        "description": "apparent size (du -sb) of what is installed; Datowl: the single binary"
+      },
+      "query_select_200k": {
+        "first_row": null,
+        "first_page_500": null,
+        "all_rows": null,
+        "reason": "not measured reproducibly, see README.md"
+      }
+    },
+    "dbeaver": {
+      "first_window": {
+        "median": 428,
+        "unit": "ms",
+        "runs": 5,
+        "values": [
+          370,
+          382,
+          483,
+          461,
+          428
+        ],
+        "description": "exec -> first viewable top-level window (splash included), warm page cache"
+      },
+      "visually_complete": {
+        "median": 4471,
+        "unit": "ms",
+        "runs": 5,
+        "values": [
+          4071,
+          4401,
+          4471,
+          4654,
+          4840
+        ],
+        "description": "exec -> screen identical (>= 98 % of the cells the app changes) to its state at +30 s, warm page cache"
+      },
+      "cpu_time_30s": {
+        "median": 37.086,
+        "unit": "s",
+        "runs": 5,
+        "values": [
+          36.501,
+          36.752,
+          37.589,
+          37.093,
+          37.086
+        ],
+        "description": "CPU time (user+sys) of every process of the app, exec -> +30 s"
+      },
+      "idle_cpu": {
+        "median": 100.64,
+        "unit": "% of one core",
+        "runs": 5,
+        "values": [
+          100.76,
+          100.74,
+          100.39,
+          100.56,
+          100.64
+        ],
+        "description": "mean CPU between +20 s and +30 s"
+      },
+      "memory_pss": {
+        "median": 310.9,
+        "unit": "MB",
+        "runs": 5,
+        "values": [
+          324.4,
+          304.5,
+          314.9,
+          308.2,
+          310.9
+        ],
+        "description": "PSS summed over every process of the app at +30 s (MB = 1024*1024 bytes)"
+      },
+      "first_screen": [
+        {
+          "windows": [
+            "DBeaver",
+            "Product Configuration"
+          ],
+          "runs": 5
+        }
+      ],
+      "processes_at_30s": [
+        "dbeaver",
+        "java"
+      ],
+      "first_window_cold": {
+        "median": 778,
+        "unit": "ms",
+        "runs": 5,
+        "values": [
+          894,
+          778,
+          752,
+          679,
+          846
+        ],
+        "description": "exec -> first viewable top-level window (splash included), cold page cache"
+      },
+      "visually_complete_cold": {
+        "median": 6165,
+        "unit": "ms",
+        "runs": 5,
+        "values": [
+          6937,
+          5763,
+          6165,
+          5994,
+          6219
+        ],
+        "description": "exec -> screen identical (>= 98 % of the cells the app changes) to its state at +30 s, cold page cache"
+      },
+      "cpu_time_30s_cold": {
+        "median": 37.541,
+        "unit": "s",
+        "runs": 5,
+        "values": [
+          38.247,
+          37.159,
+          37.426,
+          37.541,
+          37.876
+        ],
+        "description": "CPU time (user+sys) of every process of the app, exec -> +30 s"
+      },
+      "idle_cpu_cold": {
+        "median": 100.18,
+        "unit": "% of one core",
+        "runs": 5,
+        "values": [
+          100.17,
+          100.16,
+          101.04,
+          100.18,
+          100.61
+        ],
+        "description": "mean CPU between +20 s and +30 s"
+      },
+      "memory_pss_cold": {
+        "median": 310.2,
+        "unit": "MB",
+        "runs": 5,
+        "values": [
+          307.0,
+          302.5,
+          310.2,
+          317.8,
+          311.2
+        ],
+        "description": "PSS summed over every process of the app at +30 s (MB = 1024*1024 bytes)"
+      },
+      "disk_size": {
+        "value": 213.0,
+        "unit": "MB",
+        "description": "apparent size (du -sb) of what is installed; Datowl: the single binary"
+      },
+      "query_select_200k": {
+        "first_row": null,
+        "first_page_500": null,
+        "all_rows": null,
+        "reason": "not measured reproducibly, see README.md"
+      }
+    },
+    "dbeaver_configured": {
+      "first_window": {
+        "median": 437,
+        "unit": "ms",
+        "runs": 5,
+        "values": [
+          383,
+          437,
+          394,
+          472,
+          492
+        ],
+        "description": "exec -> first viewable top-level window (splash included), warm page cache"
+      },
+      "visually_complete": {
+        "median": 6275,
+        "unit": "ms",
+        "runs": 5,
+        "values": [
+          6235,
+          6174,
+          6364,
+          6275,
+          6993
+        ],
+        "description": "exec -> screen identical (>= 98 % of the cells the app changes) to its state at +30 s, warm page cache"
+      },
+      "cpu_time_30s": {
+        "median": 18.032,
+        "unit": "s",
+        "runs": 5,
+        "values": [
+          18.129,
+          18.032,
+          17.961,
+          17.982,
+          19.108
+        ],
+        "description": "CPU time (user+sys) of every process of the app, exec -> +30 s"
+      },
+      "idle_cpu": {
+        "median": 1.89,
+        "unit": "% of one core",
+        "runs": 5,
+        "values": [
+          1.67,
+          2.11,
+          1.89,
+          1.64,
+          2.12
+        ],
+        "description": "mean CPU between +20 s and +30 s"
+      },
+      "memory_pss": {
+        "median": 528.4,
+        "unit": "MB",
+        "runs": 5,
+        "values": [
+          523.0,
+          528.4,
+          536.6,
+          543.0,
+          524.5
+        ],
+        "description": "PSS summed over every process of the app at +30 s (MB = 1024*1024 bytes)"
+      },
+      "first_screen": [
+        {
+          "windows": [
+            "DBeaver 26.2.3"
+          ],
+          "runs": 5
+        }
+      ],
+      "processes_at_30s": [
+        "WebKitNetworkPr",
+        "WebKitWebProces",
+        "dbeaver",
+        "java"
+      ],
+      "first_window_cold": {
+        "median": 704,
+        "unit": "ms",
+        "runs": 5,
+        "values": [
+          741,
+          639,
+          704,
+          797,
+          619
+        ],
+        "description": "exec -> first viewable top-level window (splash included), cold page cache"
+      },
+      "visually_complete_cold": {
+        "median": 8264,
+        "unit": "ms",
+        "runs": 5,
+        "values": [
+          8247,
+          9038,
+          8264,
+          9277,
+          7470
+        ],
+        "description": "exec -> screen identical (>= 98 % of the cells the app changes) to its state at +30 s, cold page cache"
+      },
+      "cpu_time_30s_cold": {
+        "median": 21.228,
+        "unit": "s",
+        "runs": 5,
+        "values": [
+          21.228,
+          24.02,
+          21.145,
+          22.945,
+          18.539
+        ],
+        "description": "CPU time (user+sys) of every process of the app, exec -> +30 s"
+      },
+      "idle_cpu_cold": {
+        "median": 2.06,
+        "unit": "% of one core",
+        "runs": 5,
+        "values": [
+          1.91,
+          2.41,
+          2.4,
+          2.06,
+          1.89
+        ],
+        "description": "mean CPU between +20 s and +30 s"
+      },
+      "memory_pss_cold": {
+        "median": 526.1,
+        "unit": "MB",
+        "runs": 5,
+        "values": [
+          526.1,
+          527.6,
+          536.9,
+          525.0,
+          518.6
+        ],
+        "description": "PSS summed over every process of the app at +30 s (MB = 1024*1024 bytes)"
+      },
+      "disk_size": {
+        "value": 213.0,
+        "unit": "MB",
+        "description": "apparent size (du -sb) of what is installed; Datowl: the single binary"
+      },
+      "query_select_200k": {
+        "first_row": null,
+        "first_page_500": null,
+        "all_rows": null,
+        "reason": "not measured reproducibly, see README.md"
+      }
+    }
+  }
+}

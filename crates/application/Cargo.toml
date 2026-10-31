@@ -1,0 +1,12 @@
+[package]
+name = "datowl-application"
+description = "Datowl — couche application : cas d'usage qui orchestrent le domaine via ses ports"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+datowl-domain.workspace = true
+serde.workspace = true
+tokio.workspace = true
+uuid.workspace = true

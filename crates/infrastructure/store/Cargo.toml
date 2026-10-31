@@ -1,0 +1,17 @@
+[package]
+name = "datowl-store"
+description = "Datowl — infrastructure : persistance locale (JSON, Trousseau, dossier projet) derrière les ports du domaine"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+datowl-domain.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+uuid.workspace = true
+keyring = { version = "3", features = ["apple-native"] }
+
+[dev-dependencies]
+tempfile = "3"

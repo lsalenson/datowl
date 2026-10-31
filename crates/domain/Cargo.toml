@@ -1,0 +1,13 @@
+[package]
+name = "datowl-domain"
+description = "Datowl — couche domaine : modèle, règles métier et ports (aucune I/O)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+async-trait.workspace = true
+serde.workspace = true
+thiserror.workspace = true
+tokio-util.workspace = true
+uuid.workspace = true

@@ -1,0 +1,36 @@
+[package]
+name = "datowl-desktop"
+description = "Datowl — couche interface : coque Tauri, commandes IPC et racine de composition"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+default-run = "datowl-desktop"
+
+[lib]
+name = "datowl_desktop"
+path = "src/lib.rs"
+
+[[bin]]
+name = "datowl-desktop"
+path = "src/main.rs"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+datowl-domain.workspace = true
+datowl-application.workspace = true
+datowl-postgres.workspace = true
+datowl-clickhouse.workspace = true
+datowl-store.workspace = true
+tauri = { version = "2", features = ["macos-private-api"] }
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+uuid.workspace = true
+mimalloc = { version = "0.1", default-features = false }
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+tauri-plugin-dialog = "2"
+tauri-plugin-updater = "2"
+tauri-plugin-process = "2"

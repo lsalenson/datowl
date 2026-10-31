@@ -1,0 +1,19 @@
+[package]
+name = "datowl-postgres"
+description = "Datowl — infrastructure : moteur PostgreSQL (tokio-postgres) derrière les ports Driver/Session"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+datowl-domain.workspace = true
+async-trait.workspace = true
+futures-util.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+tokio-postgres = "0.7"
+postgres-native-tls = "0.5"
+native-tls = "0.2"
+
+[dev-dependencies]
+uuid.workspace = true

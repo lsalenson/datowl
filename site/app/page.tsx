@@ -1,3 +1,4 @@
+import { Benchmarks } from '@/components/Benchmarks';
 import { Footer } from '@/components/Footer';
 import { HeroStage } from '@/components/HeroStage';
 import { InstallButton } from '@/components/InstallButton';
@@ -53,6 +54,8 @@ export default function Home() {
             ))}
           </section>
         </div>
+
+        <Benchmarks />
 
         <InstallGrid />
 

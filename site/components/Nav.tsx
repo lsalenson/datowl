@@ -2,6 +2,7 @@ import { RELEASES_URL } from '@/lib/releases';
 import { Owl } from './Owl';
 
 const LINKS: [string, string][] = [
+  ['Performances', '#performances'],
   ['Télécharger', '#installer'],
   ['FAQ', '#faq'],
 ];

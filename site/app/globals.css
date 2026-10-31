@@ -352,6 +352,70 @@ kbd {
 .stat-value { font-size: clamp(36px, 3vw, 48px); line-height: 1; letter-spacing: -0.04em; }
 .stat-label { font-size: 14px; color: var(--text-dim); max-width: 240px; }
 
+/* Benchmarks: title column like the FAQ, then metric tabs and animated bars. */
+.rule + .rule { border-top: 0; }
+.bench { display: grid; grid-template-columns: minmax(280px, 512px) 1fr; }
+.bench-side { display: flex; flex-direction: column; gap: 24px; padding: 40px 40px 48px; }
+.bench .section-title { padding: 0; font-size: clamp(36px, 2.9vw, 52px); max-width: 420px; }
+.bench-lead { font-size: 16px; line-height: 24px; color: var(--text-dim); max-width: 380px; }
+.bench-toggle { display: inline-flex; width: fit-content; padding: 3px; gap: 2px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; }
+.bench-toggle button { padding: 7px 12px; border-radius: 6px; font-size: 13.5px; color: var(--text-dim); transition: background 0.25s, color 0.25s; }
+.bench-toggle button:hover { color: var(--text); }
+.bench-toggle button.on { background: var(--orchid-soft); color: var(--text); }
+.bench-meta { margin-top: auto; font: 12px/1.7 var(--font-mono); color: var(--text-faint); }
+.bench-meta a { color: var(--text-dim); text-decoration: underline; text-underline-offset: 3px; text-decoration-color: var(--line-strong); transition: color 0.2s; }
+.bench-meta a:hover { color: var(--orchid); }
+
+.bench-main { min-width: 0; border-left: 1px solid var(--line); display: flex; flex-direction: column; }
+.bench-tabs { display: grid; grid-template-columns: repeat(5, 1fr); border-bottom: 1px solid var(--line); }
+.bench-tabs button {
+  position: relative;
+  padding: 18px 16px;
+  font-size: 15px;
+  color: var(--text-dim);
+  border-right: 1px solid var(--line);
+  transition: background 0.25s, color 0.25s;
+}
+.bench-tabs button:last-child { border-right: 0; }
+.bench-tabs button:hover { background: var(--hover); color: var(--text); }
+.bench-tabs button.on { color: var(--text); }
+.bench-tabs button::after { content: ''; position: absolute; left: 0; right: 0; bottom: -1px; height: 2px; background: var(--orchid); transform: scaleX(0); transform-origin: left; transition: transform 0.4s var(--ease); }
+.bench-tabs button.on::after { transform: scaleX(1); }
+
+.bench-panel { display: flex; flex-direction: column; gap: 36px; padding: 40px 40px 36px; flex: 1; animation: answer 0.45s var(--ease) both; }
+.bench-head { display: flex; flex-direction: column; gap: 10px; }
+.bench-title { font: 12px/1 var(--font-mono); letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-faint); }
+.bench-ratio { font-size: clamp(24px, 2.1vw, 34px); line-height: 1.2; letter-spacing: -0.02em; }
+.bench-ratio b { font-weight: 400; color: var(--orchid); }
+.bench-ratio i { font-style: normal; color: var(--text-faint); }
+
+.bars { display: flex; flex-direction: column; gap: 22px; }
+.bar-row { display: grid; grid-template-columns: 190px 1fr 110px; align-items: center; gap: 20px; }
+.bar-label { display: flex; flex-direction: column; gap: 2px; }
+.bar-name { font-size: 16px; }
+.bar-note { font-size: 12px; color: var(--text-faint); }
+.bar-track { position: relative; height: 34px; background: var(--panel); border-radius: 4px; }
+.bar-fill { position: absolute; inset: 0 auto 0 0; border-radius: 4px; background: #3a3740; transition: width 1s var(--ease); }
+.bar-datowl .bar-fill { background: var(--orchid); }
+.bar-run {
+  position: absolute;
+  top: 50%;
+  width: 7px;
+  height: 7px;
+  margin: -3.5px 0 0 -3.5px;
+  border-radius: 50%;
+  background: var(--text);
+  opacity: 0.55;
+  transition: left 1s var(--ease), transform 0.2s;
+}
+.bar-datowl .bar-run { background: var(--ink); }
+.bar-run:hover { transform: scale(1.6); opacity: 1; }
+.bar-value { font-size: 22px; letter-spacing: -0.02em; text-align: right; font-variant-numeric: tabular-nums; }
+.bar-value small { font-size: 13px; color: var(--text-faint); }
+.bar-datowl .bar-value { color: var(--orchid); }
+.bar-row:hover .bar-fill { filter: brightness(1.15); }
+.bench-note { margin-top: auto; font-size: 13.5px; line-height: 1.55; color: var(--text-faint); max-width: 760px; }
+
 /* Full-width horizontal rules around a framed band, as Vibe draws its grids. */
 .rule { border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
 
@@ -602,7 +666,14 @@ kbd {
   .nav-links, .nav-muted { display: none; }
   .nav-inner { justify-content: space-between; }
   .section-title { padding: 80px var(--gutter) 32px; }
-  .faq { grid-template-columns: 1fr; }
+  .faq, .bench { grid-template-columns: 1fr; }
+  .bench-main { border-left: 0; border-top: 1px solid var(--line); }
+  .bench-tabs { display: flex; overflow-x: auto; }
+  .bench-tabs button { flex: none; }
+  .bench-panel { padding: 28px var(--gutter); }
+  .bar-row { grid-template-columns: 1fr auto; gap: 8px 12px; }
+  .bar-track { grid-column: 1 / -1; grid-row: 2; }
+  .bench-side { padding: 72px var(--gutter) 32px; }
   .faq .section-title { padding: 80px var(--gutter) 32px; }
   .faq-list { border-left: 0; border-top: 1px solid var(--line); }
   .faq summary { font-size: 18px; padding: 20px var(--gutter); }

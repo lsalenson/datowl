@@ -67,6 +67,7 @@ def main():
         return m.group(1)
 
     results = {
+        "method": "docs/benchmarks/README.md",
         "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "machine": {
             "cpu": lscpu_field("Model name"),
@@ -82,7 +83,8 @@ def main():
         "apps": {
             "datowl": {
                 "version": tauri_conf["version"],
-                "commit": sh(f"git -C {repo} rev-parse HEAD"),
+                # Last commit outside docs/: the app sources the binary was built from.
+                "commit": sh(f"git -C {repo} log -1 --format=%H -- . ':!docs'"),
                 "build": "release, `npx tauri build --no-bundle` (lto=thin, codegen-units=1, strip)",
                 "runtime": "WebKitGTK " + sh("dpkg-query -W -f='${Version}' libwebkit2gtk-4.1-0"),
             },

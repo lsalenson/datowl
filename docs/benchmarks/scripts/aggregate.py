@@ -15,7 +15,7 @@ import subprocess
 import sys
 from datetime import datetime, timezone
 
-APPS = ["datowl", "datagrip", "dbeaver"]
+APPS = ["datowl", "datagrip", "dbeaver", "dbeaver_configured"]
 DATAGRIP_DIR = os.environ.get("DATAGRIP_DIR", "/opt/bench/apps/DataGrip-2026.2.6.1")
 DBEAVER_DIR = os.environ.get("DBEAVER_DIR", "/opt/bench/apps/dbeaver")
 
@@ -101,6 +101,10 @@ def main():
         },
         "metrics": {},
     }
+    results["apps"]["dbeaver_configured"] = dict(
+        results["apps"]["dbeaver"],
+        profile="first-run 'Product Configuration' wizard completed with its defaults (prepare_dbeaver_profile.sh)",
+    )
 
     for app in APPS:
         m = {}
@@ -122,7 +126,7 @@ def main():
             if mode == "warm":
                 m["first_screen"] = first_screen(runs)
                 m["processes_at_30s"] = sorted({p["comm"] for r in runs for p in r["processes"]})
-        m["disk_size"] = {"value": round(int(sizes[app]) / 1e6, 1), "unit": "MB",
+        m["disk_size"] = {"value": round(int(sizes[app.replace("_configured", "")]) / 1e6, 1), "unit": "MB",
                           "description": "apparent size (du -sb) of what is installed; Datowl: the single binary"}
         results["metrics"][app] = m
 
@@ -137,7 +141,7 @@ def main():
         "first_page_500": metric([r["first_page_500_ms"] for r in fetch], "ms", "execute -> first page of 500 rows complete (UI default page size)"),
         "all_rows": metric([r["all_rows_ms"] for r in fetch], "ms", "execute -> all 200 000 rows in the sink"),
     }
-    for app in ("datagrip", "dbeaver"):
+    for app in ("datagrip", "dbeaver", "dbeaver_configured"):
         results["metrics"][app]["query_select_200k"] = {
             "first_row": None, "first_page_500": None, "all_rows": None,
             "reason": "not measured reproducibly, see README.md",

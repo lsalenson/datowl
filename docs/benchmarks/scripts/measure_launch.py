@@ -10,7 +10,8 @@ For one run:
   * memory: PSS summed over every process of the cgroup at +30 s (/proc/PID/smaps_rollup);
   * a screenshot of the screen at +30 s (first-screen state).
 
-The app gets a fresh, empty HOME for each run, so every run sees the same first screen.
+The app gets a fresh, empty HOME for each run (also used as the JVM's user.home), so every
+run sees the same first screen; --home-template copies a prepared profile into it instead.
 Prints one JSON object on stdout.
 
 Usage: measure_launch.py --name datowl --out DIR -- /path/to/binary [args...]
@@ -148,6 +149,7 @@ def main():
     ap.add_argument("--out", required=True, help="directory for screenshots")
     ap.add_argument("--settle", type=float, default=30.0, help="seconds after launch for memory/CPU")
     ap.add_argument("--run", default="0")
+    ap.add_argument("--home-template", help="directory copied into the fresh HOME (pre-configured profile)")
     ap.add_argument("--cold", action="store_true", help="drop the page cache before launching")
     ap.add_argument("cmd", nargs=argparse.REMAINDER)
     a = ap.parse_args()
@@ -156,11 +158,15 @@ def main():
     cg = os.path.join(CGROOT, f"bench-{a.name}-{os.getpid()}")
     os.makedirs(cg, exist_ok=True)
     home = tempfile.mkdtemp(prefix=f"home-{a.name}-")
+    if a.home_template:
+        shutil.copytree(a.home_template, home, dirs_exist_ok=True, symlinks=True)
     runtime = os.path.join(home, ".runtime")
     os.makedirs(runtime, mode=0o700)
     env = dict(os.environ, HOME=home, XDG_CONFIG_HOME=f"{home}/.config",
                XDG_DATA_HOME=f"{home}/.local/share", XDG_CACHE_HOME=f"{home}/.cache",
-               XDG_RUNTIME_DIR=runtime)
+               XDG_RUNTIME_DIR=runtime,
+               # The JVM takes user.home from /etc/passwd, not $HOME: point it at the fresh home too.
+               JAVA_TOOL_OPTIONS=(os.environ.get("JAVA_TOOL_OPTIONS", "") + f" -Duser.home={home}").strip())
 
     win = Windows()
     before = set(win.clients())

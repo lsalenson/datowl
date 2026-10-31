@@ -39,6 +39,7 @@ declare -A EXTRA=([dbeaver_configured]="--home-template $DBEAVER_PROFILE")
 APPS=(datowl datagrip dbeaver dbeaver_configured)
 
 launch() { # app run [--cold]
+  . "$HERE/restart_display.sh"
   "$PY" "$HERE/measure_launch.py" --name "$1" --run "$2" ${3:-} ${EXTRA[$1]:-} --out "$OUT/shots" -- ${CMD[$1]} >> "$OUT/launch.jsonl"
   sleep 3
 }
@@ -46,6 +47,7 @@ launch() { # app run [--cold]
 : > "$OUT/launch.jsonl"
 # One discarded warm-up per app: fills the page cache so "warm" runs are comparable.
 for app in "${APPS[@]}"; do
+  . "$HERE/restart_display.sh"
   "$PY" "$HERE/measure_launch.py" --name "$app" --run warmup ${EXTRA[$app]:-} --out "$OUT/shots" -- ${CMD[$app]} > /dev/null
   sleep 3
 done

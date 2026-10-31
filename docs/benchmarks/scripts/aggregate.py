@@ -115,8 +115,8 @@ def main():
             suffix = "" if mode == "warm" else "_cold"
             m["first_window" + suffix] = metric([r["first_window_ms"] for r in runs], "ms",
                 f"exec -> first viewable top-level window (splash included), {mode} page cache")
-            m["first_paint" + suffix] = metric([r["first_paint_ms"] for r in runs], "ms",
-                f"exec -> first non-splash window with drawn content, {mode} page cache")
+            m["visually_complete" + suffix] = metric([r["visually_complete_ms"] for r in runs], "ms",
+                f"exec -> screen identical (>= 98 % of the cells the app changes) to its state at +30 s, {mode} page cache")
             m["cpu_time_30s" + suffix] = metric([r["cpu_total_s"] for r in runs], "s",
                 "CPU time (user+sys) of every process of the app, exec -> +30 s")
             m["idle_cpu" + suffix] = metric([r["cpu_idle_pct"] for r in runs], "% of one core",

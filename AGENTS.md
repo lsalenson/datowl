@@ -25,7 +25,7 @@ psql -h localhost -p 55432 -U datowl -d postgres -f crates/infrastructure/postgr
 DATOWL_TEST_PG_PORT=55432 cargo test -p datowl-postgres --test live
 ```
 
-Docker : `docker compose up` sert la démo UI (backend mock) sur http://localhost:8080.
+Docker : `docker build --output type=local,dest=out .` compile l'app Tauri pour Linux (binaire dans `out/Datowl`).
 
 Avant de rendre la main : `cargo test --workspace`, zéro warning sur `cargo check --workspace --tests`, et `npm --prefix web run typecheck`.
 

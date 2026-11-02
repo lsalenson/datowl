@@ -1,0 +1,41 @@
+name: Windows
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, docker]
+  pull_request:
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            web/package-lock.json
+            apps/desktop/package-lock.json
+
+      - run: npm --prefix web ci
+      - run: npm --prefix apps/desktop ci
+      - run: npm --prefix web run typecheck
+      - run: cargo test --workspace
+
+      # Installeur de test (non signé, sans artefacts d'updater).
+      - run: >
+          npm --prefix apps/desktop run build --
+          --bundles nsis
+          --config '{"bundle":{"createUpdaterArtifacts":false}}'
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: datowl-windows
+          path: target/release/bundle/nsis/*.exe

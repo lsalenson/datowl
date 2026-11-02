@@ -25,6 +25,8 @@ psql -h localhost -p 55432 -U datowl -d postgres -f crates/infrastructure/postgr
 DATOWL_TEST_PG_PORT=55432 cargo test -p datowl-postgres --test live
 ```
 
+Docker : `docker compose up -d db clickhouse` lance un Postgres 16 (port 55432, fixture chargée) et un ClickHouse (8123) ; `docker compose up web` sert la démo UI (mock) sur :8080.
+
 Avant de rendre la main : `cargo test --workspace`, zéro warning sur `cargo check --workspace --tests`, et `npm --prefix web run typecheck`.
 
 ---

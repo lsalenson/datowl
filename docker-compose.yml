@@ -1,24 +1,4 @@
-# Bases jetables pour développer et tester Datowl.
-#   docker compose up -d db clickhouse   # PostgreSQL 16 (:55432) + ClickHouse (:8123)
-#   docker compose up web                # démo UI sur http://localhost:8080
 services:
   web:
     build: .
     ports: ["8080:80"]
-
-  db:
-    image: postgres:16-alpine
-    environment:
-      POSTGRES_USER: datowl
-      POSTGRES_HOST_AUTH_METHOD: trust
-    ports: ["55432:5432"]
-    volumes:
-      - ./crates/infrastructure/postgres/tests/fixture.sql:/docker-entrypoint-initdb.d/fixture.sql:ro
-
-  clickhouse:
-    image: clickhouse/clickhouse-server:24.8-alpine
-    environment:
-      CLICKHOUSE_USER: datowl
-      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: "1"
-      CLICKHOUSE_PASSWORD: ""
-    ports: ["8123:8123"]

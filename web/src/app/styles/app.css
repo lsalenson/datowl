@@ -1,5 +1,5 @@
-/* Datowl — DataGrip's "islands" layout and geometry, rendered as glass over a
-   translucent window. Outfit for the interface, the system monospace for code and data.
+/* Datowl — DataGrip's "islands" layout and geometry: opaque islands over a translucent
+   window. Outfit for the interface, the system monospace for code and data.
    Palette: orchid, coral, greige, charcoal. */
 
 :root {
@@ -19,13 +19,12 @@
   --text-faint: rgba(235, 231, 226, 0.36);
 
   --tint: rgba(18, 17, 21, 0.5);
-  --island: rgba(30, 29, 34, 0.62);
-  --island-solid: rgba(32, 30, 36, 0.9);
+  --island: #1e1d22;
+  --island-solid: #201e24;
   --hover: rgba(255, 255, 255, 0.06);
   --pressed: rgba(255, 255, 255, 0.1);
   --line: rgba(255, 255, 255, 0.07);
   --line-strong: rgba(255, 255, 255, 0.13);
-  --blur: blur(30px) saturate(160%);
 
   --font-ui: 'Outfit Variable', -apple-system, BlinkMacSystemFont, sans-serif;
   --font-mono: ui-monospace, 'SF Mono', Menlo, Consolas, 'DejaVu Sans Mono', monospace;
@@ -179,8 +178,6 @@ html:not(.glass) .app::before {
   overflow: hidden;
   background: var(--island);
   border: 1px solid var(--line);
-  backdrop-filter: var(--blur);
-  -webkit-backdrop-filter: var(--blur);
 }
 
 .card-header {
@@ -1680,8 +1677,6 @@ html.glass .topbar {
   border: 1px solid var(--line-strong);
   border-radius: var(--r-popup);
   background: var(--island-solid);
-  backdrop-filter: var(--blur);
-  -webkit-backdrop-filter: var(--blur);
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
   animation: pop 0.1s var(--ease);
 }
@@ -1819,8 +1814,6 @@ html.glass .topbar {
   border: 1px solid var(--line-strong);
   border-radius: var(--r-island);
   background: var(--island-solid);
-  backdrop-filter: var(--blur);
-  -webkit-backdrop-filter: var(--blur);
   box-shadow: 0 24px 64px rgba(0, 0, 0, 0.55);
   overflow: hidden;
   animation: pop 0.14s var(--ease);
@@ -1897,8 +1890,6 @@ html.glass .topbar {
   border: 1px solid var(--line-strong);
   border-radius: var(--r-island);
   background: var(--island-solid);
-  backdrop-filter: var(--blur);
-  -webkit-backdrop-filter: var(--blur);
   box-shadow: 0 24px 64px rgba(0, 0, 0, 0.55);
   overflow: hidden;
   animation: pop 0.12s var(--ease);
@@ -2204,14 +2195,6 @@ html.glass .topbar {
   border-radius: var(--r-tab) !important;
 }
 
-/* In the desktop app the webview is transparent and the OS draws the glass behind it,
-   so a CSS backdrop blur on the islands has nothing to blur: it only forces WebKit to
-   recomposite the island on every repaint (each keystroke, each caret blink). */
-html.glass .card {
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
-}
-
 /* ── Ask dialog (confirm / rename / drop) ───────────────────────────── */
 
 .ask-form {
@@ -2423,8 +2406,6 @@ html.glass .card {
   border: 1px solid var(--line-strong);
   border-radius: var(--r-popup);
   background: var(--island-solid);
-  backdrop-filter: var(--blur);
-  -webkit-backdrop-filter: var(--blur);
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
   animation: pop 0.1s var(--ease);
 }
@@ -2496,8 +2477,6 @@ html.glass .card {
   border: 1px solid var(--line-strong);
   border-radius: var(--r-popup);
   background: var(--island-solid);
-  backdrop-filter: var(--blur);
-  -webkit-backdrop-filter: var(--blur);
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
   animation: pop 0.14s var(--ease);
 }

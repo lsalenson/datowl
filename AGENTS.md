@@ -63,7 +63,7 @@ Le desktop est **le seul** endroit qui choisit des adaptateurs concrets (`lib.rs
 | Module | Contenu | Ports (traits) |
 |---|---|---|
 | `datasource` | `ConnectionConfig`, `DriverKind`, `TlsMode` | `DataSourceRepository` (config + mot de passe) |
-| `engine` | contrat d'un moteur de base | `Driver`, `Session` |
+| `engine` | contrat d'un moteur de base | `Driver`, `Session`, `ExecChannel` |
 | `query` | `Row`, `Column`, `PageOutcome`, découpage SQL (`split_statements`, `Dialect`) | `ResultSink` |
 | `catalog` | arbre de l'explorateur (`NodeRef`, `TreeNode`, `ObjectRef`), `SchemaSnapshot` pour la complétion | — |
 | `project` | `ProjectInfo`, règles de nommage (`validate_name`, `validate_console_name`) | `ProjectRepository`, `ConsoleRepository`, `ProjectFiles` |
@@ -92,7 +92,7 @@ Les résultats sont poussés vers l'UI par le port de sortie `RunEvents` ; `Batc
 - **Nouveau cas d'usage** → méthode d'un service de `application` (ou nouveau service ajouté à `App`), qui ne parle qu'aux ports.
 - **Nouvel accès disque / réseau / OS** → un trait dans `domain` (port), une implémentation dans `infrastructure/*`, branchée dans `apps/desktop/src-tauri/src/lib.rs`.
 - **Nouvelle commande IPC** → `apps/desktop/src-tauri/src/commands/<contexte>.rs` : désérialiser, appeler **un** service, convertir l'erreur. Rien de plus. L'enregistrer dans `generate_handler!`, puis l'ajouter à `web/src/shared/api` (`backend.ts`, `tauri.ts`, `mock.ts`).
-- **Nouveau moteur de base** → nouveau crate `crates/infrastructure/<moteur>` qui implémente `Driver` + `Session`, une variante de `DriverKind`, et `.with(MonDriver)` dans la racine de composition. Aucun autre crate ne change.
+- **Nouveau moteur de base** → nouveau crate `crates/infrastructure/<moteur>` qui implémente `Driver` + `Session` + `ExecChannel`, une variante de `DriverKind`, et `.with(MonDriver)` dans la racine de composition. Aucun autre crate ne change.
 
 ### Erreurs
 
@@ -105,7 +105,7 @@ Le chemin de fetch est mesuré ; ne pas le dégrader sans le re-mesurer.
 - Format texte, pas de décodage de types : une valeur = une `String` prête à afficher.
 - Dans les boucles par ligne : pas de future recréé par ligne (`cancel.cancelled()` est créé une fois), pas d'allocation évitable.
 - `mimalloc` est l'allocateur global de l'app (−30 % de CPU sur le fetch).
-- Deux connexions par source Postgres : l'explorateur ne doit jamais attendre derrière une requête longue.
+- Une connexion Postgres pour l'explorateur, puis une par console, ouverte à sa première exécution et fermée avec son onglet : ni l'explorateur ni une autre console ne doivent attendre derrière une requête longue.
 
 ---
 

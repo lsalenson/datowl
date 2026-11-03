@@ -10,10 +10,10 @@ import { functions, keywords, NOT_ALIASES, TABLE_CONTEXT } from './keywords';
 
 type MonacoApi = typeof Monaco;
 
-const modelConnections = new Map<string, string>();
+const modelTabs = new Map<string, { connectionId: string; tabId: string }>();
 
-export function bindModel(model: Monaco.editor.ITextModel, connectionId: string) {
-  modelConnections.set(model.uri.toString(), connectionId);
+export function bindModel(model: Monaco.editor.ITextModel, connectionId: string, tabId: string) {
+  modelTabs.set(model.uri.toString(), { connectionId, tabId });
 }
 
 const IDENT = String.raw`(?:"[^"]+"|\x60[^\x60]+\x60|[\w$]+)`;
@@ -65,10 +65,12 @@ export function registerSqlCompletion(monaco: MonacoApi) {
   monaco.languages.registerCompletionItemProvider('sql', {
     triggerCharacters: ['.'],
     provideCompletionItems(model, position) {
-      const connectionId = modelConnections.get(model.uri.toString());
-      const { list, schema } = useConnections.getState();
+      const { connectionId, tabId } = modelTabs.get(model.uri.toString()) ?? {};
+      const { list, schema, consoleSchemas } = useConnections.getState();
       const dialect: Dialect = list.find((c) => c.id === connectionId)?.driver ?? 'postgres';
-      const snapshot: SchemaSnapshot = (connectionId && schema[connectionId]) || { defaultSchema: null, tables: [] };
+      const source: SchemaSnapshot = (connectionId && schema[connectionId]) || { defaultSchema: null, tables: [] };
+      const chosen = connectionId && tabId ? consoleSchemas[connectionId]?.[tabId] : undefined;
+      const snapshot = chosen ? { ...source, defaultSchema: chosen } : source;
 
       const word = model.getWordUntilPosition(position);
       const range = {

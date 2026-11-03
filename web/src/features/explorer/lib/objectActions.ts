@@ -13,7 +13,7 @@ const PG_OBJECT: Record<ObjectRef['kind'], string> = {
   table: 'TABLE',
   view: 'VIEW',
   materializedView: 'MATERIALIZED VIEW',
-  function: 'FUNCTION',
+  function: 'ROUTINE',
 };
 
 export function targetName(target: Target): string {
@@ -49,7 +49,8 @@ export function renameSql(target: Target, newName: string, dialect: Dialect, sig
     switch (target.kind) {
       case 'object': {
         const { object } = target;
-        if (object.kind === 'function') return signature ? `ALTER FUNCTION ${signature} RENAME TO ${to}` : null;
+        // ROUTINE: the kind covers functions and procedures alike.
+        if (object.kind === 'function') return signature ? `ALTER ROUTINE ${signature} RENAME TO ${to}` : null;
         return `ALTER ${PG_OBJECT[object.kind]} ${qualifiedName(object, dialect)} RENAME TO ${to}`;
       }
       case 'schema':
@@ -80,7 +81,7 @@ export function dropSql(target: Target, dialect: Dialect, signature?: string): s
     switch (target.kind) {
       case 'object': {
         const { object } = target;
-        if (object.kind === 'function') return signature ? `DROP FUNCTION ${signature}` : null;
+        if (object.kind === 'function') return signature ? `DROP ROUTINE ${signature}` : null;
         return `DROP ${PG_OBJECT[object.kind]} ${qualifiedName(object, dialect)}`;
       }
       case 'schema':

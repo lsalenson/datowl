@@ -39,7 +39,7 @@ site/               landing page Next.js (bouton d'installation selon l'OS, depu
 - **Pas de décodage de types.** Postgres envoie le format texte du protocole simple, ClickHouse du `TabSeparated` découpé avec `memchr` : les valeurs arrivent déjà prêtes à afficher.
 - **Lots adaptatifs vers l'UI.** 100 lignes d'abord pour un premier affichage instantané, puis des lots de 5 000.
 - **Grille canvas.** Les lignes vivent dans un tableau hors du state React ; la grille dessine seulement ce qui est visible.
-- **Deux connexions par source Postgres.** L'explorateur et la complétion ne restent jamais bloqués derrière une requête longue.
+- **Une connexion Postgres par console, plus une pour l'explorateur.** Ni l'explorateur, ni la complétion, ni les autres consoles ne restent bloqués derrière une requête longue.
 
 Mesuré : 200 000 lignes × 3 colonnes récupérées et décodées en ~330 ms (release, Postgres local).
 

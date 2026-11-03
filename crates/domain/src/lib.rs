@@ -24,7 +24,7 @@ pub use catalog::{
     SchemaSnapshot, TableInfo, TreeNode,
 };
 pub use datasource::{ConnectionConfig, DataSourceRepository, DriverKind, TlsMode};
-pub use engine::{Driver, Session};
+pub use engine::{Driver, ExecChannel, Session};
 pub use error::{Error, Result};
 pub use project::{
     ConsoleRepository, DatagripFiles, FileEntry, ProjectFiles, ProjectInfo, ProjectRepository,

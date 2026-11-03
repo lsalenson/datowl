@@ -4,7 +4,7 @@ use std::{
 };
 
 use datowl_domain::{
-    Driver, DriverKind, Error, ProjectFiles, ProjectRepository, ProjectStorage, Result, Session,
+    Driver, DriverKind, Error, ProjectFiles, ProjectRepository, ProjectStorage, Result,
 };
 use uuid::Uuid;
 
@@ -50,10 +50,11 @@ impl Context {
         self.current.read().expect("project lock poisoned").1.clone()
     }
 
-    /// Makes `id` the open project. Returns the previous project's sessions, to close.
-    pub fn switch_project(&self, id: Uuid) -> Result<Vec<Arc<dyn Session>>> {
+    /// Makes `id` the open project and closes the previous project's sessions.
+    pub fn switch_project(&self, id: Uuid) -> Result<()> {
         let storage = self.projects.open(id)?;
         *self.current.write().expect("project lock poisoned") = (id, storage);
-        Ok(self.sessions.reset())
+        self.sessions.reset();
+        Ok(())
     }
 }

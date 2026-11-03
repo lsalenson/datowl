@@ -6,7 +6,7 @@ use std::{sync::Arc, time::Instant};
 
 use uuid::Uuid;
 use datowl_domain::{
-    CancellationToken, Column, ConnectionConfig, Driver, DriverKind, Error, FolderKind, NodeRef,
+    CancellationToken, Column, ConnectionConfig, Driver, DriverKind, Error, ExecChannel, FolderKind, NodeRef,
     ObjectFolderKind, ObjectKind, ObjectRef, ResultSink, Row, Session, TlsMode,
 };
 use datowl_postgres::PostgresDriver;
@@ -30,9 +30,8 @@ impl ResultSink for Collect {
     }
 }
 
-async fn session() -> Option<Arc<dyn Session>> {
-    let port: u16 = std::env::var("DATOWL_TEST_PG_PORT").ok()?.parse().ok()?;
-    let config = ConnectionConfig {
+fn config(port: u16, tls: TlsMode) -> ConnectionConfig {
+    ConnectionConfig {
         id: Uuid::new_v4(),
         name: "test".into(),
         driver: DriverKind::Postgres,
@@ -40,29 +39,34 @@ async fn session() -> Option<Arc<dyn Session>> {
         port,
         user: "datowl".into(),
         database: "postgres".into(),
-        tls: TlsMode::Disable,
+        tls,
         save_password: false,
         color: None,
-    };
-    Some(PostgresDriver.connect(&config, None).await.expect("connect"))
+    }
 }
 
-async fn run(s: &dyn Session, sql: &str, page: usize) -> (datowl_domain::Result<datowl_domain::PageOutcome>, Collect) {
+async fn session() -> Option<Arc<dyn Session>> {
+    let port: u16 = std::env::var("DATOWL_TEST_PG_PORT").ok()?.parse().ok()?;
+    Some(PostgresDriver.connect(&config(port, TlsMode::Disable), None).await.expect("connect"))
+}
+
+async fn run(s: &dyn ExecChannel, sql: &str, page: usize) -> (datowl_domain::Result<datowl_domain::PageOutcome>, Collect) {
     let mut sink = Collect::default();
     let outcome = s.execute(sql, page, &CancellationToken::new(), &mut sink).await;
     (outcome, sink)
 }
 
-async fn count_orders(s: &dyn Session) -> String {
+async fn count_orders(s: &dyn ExecChannel) -> String {
     let (_, sink) = run(s, "select count(*) from orders", 10).await;
     sink.rows[0][0].clone().unwrap()
 }
 
 #[tokio::test]
 async fn paging_transactions_errors_and_cancel() {
-    let Some(s) = session().await else { return };
-    let observer = session().await.unwrap();
-    assert!(s.server_version().starts_with("PostgreSQL 16"));
+    let Some(session) = session().await else { return };
+    assert!(session.server_version().starts_with("PostgreSQL 16"));
+    let s = session.open_channel().await.unwrap();
+    let observer = session.open_channel().await.unwrap();
     run(&*s, "delete from orders where status in ('x', 'y')", 10).await.0.unwrap();
 
     // Paged through a cursor.
@@ -134,6 +138,82 @@ async fn paging_transactions_errors_and_cancel() {
 }
 
 #[tokio::test]
+async fn channels_are_independent() {
+    let Some(session) = session().await else { return };
+    let (a, b) = (session.open_channel().await.unwrap(), session.open_channel().await.unwrap());
+
+    // A statement on one channel leaves the other's open result alone.
+    assert!(run(&*a, "select * from users order by id", 10).await.0.unwrap().has_more);
+    run(&*b, "select 1", 10).await.0.unwrap();
+    let mut more = Collect::default();
+    let page = a.fetch_more(10, &CancellationToken::new(), &mut more).await.unwrap();
+    assert_eq!(page.rows, 10);
+    assert_eq!(more.rows[0][0].as_deref(), Some("11"));
+
+    // Settings and transactions stay on their channel.
+    run(&*b, "set search_path to pg_catalog", 10).await.0.unwrap();
+    run(&*b, "begin", 10).await.0.unwrap();
+    assert_eq!(run(&*b, "select current_schema()", 10).await.1.rows, vec![vec![Some("pg_catalog".to_owned())]]);
+    assert_eq!(run(&*a, "select current_schema()", 10).await.1.rows, vec![vec![Some("public".to_owned())]]);
+    run(&*b, "rollback", 10).await.0.unwrap();
+
+    // A long statement on one channel does not hold up another.
+    let long = b.clone();
+    let cancel = CancellationToken::new();
+    let trigger = cancel.clone();
+    let running = tokio::spawn(async move {
+        let mut sink = Collect::default();
+        long.execute("select pg_sleep(30)", 10, &cancel, &mut sink).await.map(|_| ())
+    });
+    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+    let started = Instant::now();
+    run(&*a, "select 1", 10).await.0.unwrap();
+    assert!(started.elapsed().as_secs() < 2, "blocked behind the other channel");
+
+    // A statement queued behind a running one can be cancelled before it starts.
+    let queued_cancel = CancellationToken::new();
+    let queued_trigger = queued_cancel.clone();
+    let queued = b.clone();
+    let waiting = tokio::spawn(async move {
+        let mut sink = Collect::default();
+        queued.execute("select 1", 10, &queued_cancel, &mut sink).await.map(|_| ())
+    });
+    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    let started = Instant::now();
+    queued_trigger.cancel();
+    assert!(matches!(waiting.await.unwrap(), Err(Error::Cancelled)));
+    assert!(started.elapsed().as_secs() < 2, "queued statement ignored its cancellation");
+
+    trigger.cancel();
+    assert!(matches!(running.await.unwrap(), Err(Error::Cancelled)));
+}
+
+#[tokio::test]
+async fn routine_statements_cover_procedures() {
+    let Some(session) = session().await else { return };
+    let s = session.open_channel().await.unwrap();
+    run(&*s, "drop routine if exists datowl_proc_renamed()", 10).await.0.ok();
+    run(&*s, "drop procedure if exists datowl_proc()", 10).await.0.unwrap();
+    run(&*s, "create procedure datowl_proc() language sql as 'select 1'", 10).await.0.unwrap();
+    // The statements objectActions.ts builds for a routine of the explorer.
+    run(&*s, "alter routine public.datowl_proc() rename to datowl_proc_renamed", 10).await.0.unwrap();
+    run(&*s, "drop routine public.datowl_proc_renamed()", 10).await.0.unwrap();
+}
+
+/// Needs a server with a self-signed certificate on `DATOWL_TEST_PG_TLS_PORT`, whose name
+/// does not match `localhost` and whose issuer the system does not trust.
+#[tokio::test]
+async fn verify_modes_reject_an_untrusted_certificate() {
+    let Some(port) = std::env::var("DATOWL_TEST_PG_TLS_PORT").ok().and_then(|p| p.parse().ok()) else { return };
+    for tls in [TlsMode::Prefer, TlsMode::Require] {
+        PostgresDriver.connect(&config(port, tls), None).await.unwrap_or_else(|e| panic!("{tls:?}: {e}"));
+    }
+    for tls in [TlsMode::VerifyCa, TlsMode::VerifyFull] {
+        assert!(PostgresDriver.connect(&config(port, tls), None).await.is_err(), "{tls:?} accepted it");
+    }
+}
+
+#[tokio::test]
 async fn explorer_ddl_and_completion() {
     let Some(s) = session().await else { return };
 
@@ -195,7 +275,8 @@ async fn explorer_ddl_and_completion() {
 
 #[tokio::test]
 async fn streams_large_pages_fast() {
-    let Some(s) = session().await else { return };
+    let Some(session) = session().await else { return };
+    let s = session.open_channel().await.unwrap();
     let started = Instant::now();
     let (outcome, sink) = run(&*s, "select g, md5(g::text), now() from generate_series(1, 200000) g", 200_000).await;
     let elapsed = started.elapsed();

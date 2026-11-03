@@ -34,11 +34,12 @@ export const tauriBackend: Backend = {
   sideQuery: (id, sql) => invoke('side_query', { id, sql }),
 
   splitStatements: (sql, dialect) => invoke('split_statements', { sql, dialect }),
-  execute: (connectionId, sql, pageSize, onEvent) =>
-    invoke('execute', { connectionId, sql, pageSize, onEvent: channel(onEvent) }),
-  fetchMore: (connectionId, resultToken, pageSize, onEvent) =>
-    invoke('fetch_more', { connectionId, resultToken, pageSize, onEvent: channel(onEvent) }),
-  closeResult: (connectionId, resultToken) => invoke('close_result', { connectionId, resultToken }),
+  execute: (connectionId, execChannel, sql, pageSize, onEvent) =>
+    invoke('execute', { connectionId, channel: execChannel, sql, pageSize, onEvent: channel(onEvent) }),
+  fetchMore: (connectionId, execChannel, resultToken, pageSize, onEvent) =>
+    invoke('fetch_more', { connectionId, channel: execChannel, resultToken, pageSize, onEvent: channel(onEvent) }),
+  closeResult: (connectionId, channel, resultToken) => invoke('close_result', { connectionId, channel, resultToken }),
+  closeChannel: (connectionId, channel) => invoke('close_channel', { connectionId, channel }),
   cancel: (runId) => invoke('cancel', { runId }),
 
   listConsoles: (id) => invoke('list_consoles', { id }),

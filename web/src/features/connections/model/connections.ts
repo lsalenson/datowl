@@ -16,6 +16,9 @@ interface ConnectionsStore {
   list: ConnectionConfig[];
   state: Record<string, ConnectionState>;
   schema: Record<string, SchemaSnapshot>;
+  /** Default schema chosen in a console, by connection then tab. Lives as long as the connection. */
+  consoleSchemas: Record<string, Record<string, string>>;
+  setConsoleSchema(id: string, tabId: string, schema: string): void;
   load(): Promise<void>;
   save(config: ConnectionConfig, password: string | null): Promise<ConnectionConfig>;
   remove(id: string): Promise<void>;
@@ -31,6 +34,9 @@ export const useConnections = create<ConnectionsStore>((set, get) => ({
   list: [],
   state: {},
   schema: {},
+  consoleSchemas: {},
+  setConsoleSchema: (id, tabId, schema) =>
+    set((s) => ({ consoleSchemas: { ...s.consoleSchemas, [id]: { ...s.consoleSchemas[id], [tabId]: schema } } })),
 
   load: async () => {
     set({ list: await backend.listConnections() });
@@ -96,6 +102,7 @@ export const useConnections = create<ConnectionsStore>((set, get) => ({
   disconnect: async (id) => {
     await backend.disconnect(id);
     setState(id, { status: 'idle' });
+    set((s) => ({ consoleSchemas: { ...s.consoleSchemas, [id]: {} } }));
     const name = get().list.find((c) => c.id === id)?.name ?? id;
     log('info', name, 'Disconnected');
   },

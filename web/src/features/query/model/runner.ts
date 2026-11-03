@@ -2,6 +2,7 @@
 
 import { backend, errorMessage, type Row, type RunEvent } from '@/shared/api';
 import { useConnections } from '@/features/connections';
+import { useWorkspace } from '@/features/workspace';
 import { log } from '@/shared/model/output';
 import { useResults, type ResultSet } from './results';
 import { useUi } from '@/shared/model/ui';
@@ -19,6 +20,17 @@ export interface RunOptions {
 }
 
 let nextSetId = 1;
+
+/** Statements of the explorer run apart from any console, whose `BEGIN` or `SET` they must ignore. */
+const EXPLORER_CHANNEL = 'explorer';
+
+// A tab that is gone, or now runs on another source, gives its connection back.
+useWorkspace.subscribe((state, previous) => {
+  for (const tab of previous.tabs) {
+    if (!tab.connectionId || state.tabs.some((t) => t.id === tab.id && t.connectionId === tab.connectionId)) continue;
+    void backend.closeChannel(tab.connectionId, tab.id).catch(() => {});
+  }
+});
 
 export async function runSql(tabId: string, connectionId: string, sql: string, options: RunOptions = {}): Promise<void> {
   const connections = useConnections.getState();
@@ -118,7 +130,7 @@ export async function runSql(tabId: string, connectionId: string, sql: string, o
   };
 
   try {
-    const runId = await backend.execute(connectionId, sql, useUi.getState().pageSize, onEvent);
+    const runId = await backend.execute(connectionId, tabId, sql, useUi.getState().pageSize, onEvent);
     if (useResults.getState().byTab[tabId]?.running) useResults.getState().setRunId(tabId, runId);
   } catch (e) {
     log('error', source, errorMessage(e));
@@ -162,7 +174,7 @@ export async function fetchMore(tabId: string, connectionId: string, setId: stri
           break;
       }
     };
-    backend.fetchMore(connectionId, set.resultToken!, pageSize, onEvent).then(
+    backend.fetchMore(connectionId, tabId, set.resultToken!, pageSize, onEvent).then(
       (runId) => useResults.getState().setRunId(tabId, runId),
       (e) => {
         useResults.getState().updateSet(tabId, setId, { hasMore: false, resultToken: null, fetching: false });
@@ -193,6 +205,22 @@ export function plural(n: number, word: string): string {
   return `${n.toLocaleString('en-US')} ${word}${n === 1 ? '' : 's'}`;
 }
 
+/** Closes the results still being paged on a source. They hold locks in their transaction,
+ *  on which a rename or a drop from the explorer would otherwise wait without any way to stop it. */
+export async function releaseOpenResults(connectionId: string): Promise<void> {
+  const store = useResults.getState();
+  const closing: Promise<void>[] = [];
+  for (const tab of useWorkspace.getState().tabs) {
+    if (tab.connectionId !== connectionId) continue;
+    for (const set of store.byTab[tab.id]?.sets ?? []) {
+      if (!set.hasMore || set.resultToken === null) continue;
+      closing.push(backend.closeResult(connectionId, tab.id, set.resultToken));
+      store.updateSet(tab.id, set.id, { hasMore: false, resultToken: null });
+    }
+  }
+  await Promise.allSettled(closing);
+}
+
 /** Runs one statement outside any editor (explorer actions: rename, drop…), logging it to
  *  the output. Resolves with the rows of its result, rejects with the server's message. */
 export async function executeStatement(connectionId: string, sql: string): Promise<Row[]> {
@@ -209,7 +237,7 @@ export async function executeStatement(connectionId: string, sql: string): Promi
       else if (e.kind === 'notice') log('notice', source, e.message);
       else if (e.kind === 'statementFinished') {
         log('success', source, `completed in ${formatMs(e.elapsedMs)}`);
-        if (e.resultToken !== null) void backend.closeResult(connectionId, e.resultToken);
+        if (e.resultToken !== null) void backend.closeResult(connectionId, EXPLORER_CHANNEL, e.resultToken);
       } else if (e.kind === 'error') {
         failure = e.message;
         log('error', source, e.message);
@@ -218,7 +246,7 @@ export async function executeStatement(connectionId: string, sql: string): Promi
         else resolve(rows);
       }
     };
-    backend.execute(connectionId, sql, 1000, onEvent).catch((e) => {
+    backend.execute(connectionId, EXPLORER_CHANNEL, sql, 1000, onEvent).catch((e) => {
       log('error', source, errorMessage(e));
       reject(new Error(errorMessage(e)));
     });

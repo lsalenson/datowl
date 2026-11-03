@@ -1,7 +1,7 @@
 // Mirrors the serde types of the Rust side (crates/core and apps/desktop).
 
 export type DriverKind = 'postgres' | 'clickhouse';
-export type TlsMode = 'disable' | 'prefer' | 'require';
+export type TlsMode = 'disable' | 'prefer' | 'require' | 'verify-ca' | 'verify-full';
 export type Dialect = DriverKind;
 
 export interface ConnectionConfig {

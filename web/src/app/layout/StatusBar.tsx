@@ -19,7 +19,9 @@ export function StatusBar() {
   const project = useProjects((s) => s.current);
   const connection = useConnections((s) => s.list.find((c) => c.id === tab?.connectionId));
   const state = useConnections((s) => (tab ? s.state[tab.connectionId] : undefined));
-  const schema = useConnections((s) => (tab ? s.schema[tab.connectionId]?.defaultSchema : undefined));
+  const schema = useConnections((s) =>
+    tab ? (s.consoleSchemas[tab.connectionId]?.[tab.id] ?? s.schema[tab.connectionId]?.defaultSchema) : undefined,
+  );
   const caret = useUi((s) => s.caret);
   const pageSize = useUi((s) => s.pageSize);
   const setPageSize = useUi((s) => s.setPageSize);

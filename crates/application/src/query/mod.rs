@@ -40,17 +40,31 @@ impl QueryService {
             .collect()
     }
 
-    /// Runs a script statement by statement, stopping at the first error. Returns the run id.
-    pub fn execute(&self, connection: Uuid, sql: String, page_size: usize, events: Arc<dyn RunEvents>) -> Result<u64> {
-        let session = self.ctx.sessions.get(connection)?;
+    /// Runs a script statement by statement on `channel`, opening it on first use and
+    /// stopping at the first error. Returns the run id.
+    pub fn execute(&self, connection: Uuid, channel: String, sql: String, page_size: usize, events: Arc<dyn RunEvents>) -> Result<u64> {
+        self.ctx.sessions.get(connection)?;
         let dialect = self.ctx.storage().data_sources.get(connection)?.driver.dialect();
-        let (run_id, cancel) = self.ctx.sessions.start_run();
-        self.ctx.sessions.forget_result(connection);
+        let (run_id, cancel) = self.ctx.sessions.start_run(connection, &channel);
+        self.ctx.sessions.forget_result(connection, &channel);
         let ctx = self.ctx.clone();
 
         tokio::spawn(async move {
             let sessions = &ctx.sessions;
             let started = Instant::now();
+            let exec = tokio::select! {
+                exec = sessions.channel(connection, &channel) => exec,
+                _ = cancel.cancelled() => Err(Error::Cancelled),
+            };
+            let exec = match exec {
+                Ok(exec) => exec,
+                Err(e) => {
+                    events.send(RunEvent::Error { index: 0, position: None, message: e.to_string() });
+                    events.send(RunEvent::Finished { elapsed_ms: ms(started), cancelled: cancel.is_cancelled() });
+                    sessions.finish_run(run_id);
+                    return;
+                }
+            };
             let mut cancelled = false;
             let mut offsets = Utf16Cursor::new(&sql);
 
@@ -61,13 +75,13 @@ impl QueryService {
                     sql: statement.to_owned(),
                     offset: offsets.at(span.start),
                 });
-                sessions.forget_result(connection);
+                sessions.forget_result(connection, &channel);
 
                 let statement_started = Instant::now();
                 let mut sink = BatchingSink::new(events.clone(), index);
-                let outcome = session.execute(statement, page_size, &cancel, &mut sink).await;
+                let outcome = exec.execute(statement, page_size, &cancel, &mut sink).await;
                 sink.flush();
-                let token = |page: &PageOutcome| page.has_more.then(|| sessions.open_result(connection));
+                let token = |page: &PageOutcome| page.has_more.then(|| sessions.open_result(connection, &channel));
                 if !report(&*events, index, outcome, statement_started, token) {
                     cancelled = cancel.is_cancelled();
                     break;
@@ -81,24 +95,27 @@ impl QueryService {
     }
 
     /// Continues the result set identified by `result_token`. Returns the run id.
-    pub fn fetch_more(&self, connection: Uuid, result_token: u64, page_size: usize, events: Arc<dyn RunEvents>) -> Result<u64> {
-        if !self.ctx.sessions.is_open_result(connection, result_token) {
+    pub fn fetch_more(&self, connection: Uuid, channel: String, result_token: u64, page_size: usize, events: Arc<dyn RunEvents>) -> Result<u64> {
+        if !self.ctx.sessions.is_open_result(connection, &channel, result_token) {
             return Err(Error::NoOpenResult);
         }
-        let session = self.ctx.sessions.get(connection)?;
-        let (run_id, cancel) = self.ctx.sessions.start_run();
+        self.ctx.sessions.get(connection)?;
+        let (run_id, cancel) = self.ctx.sessions.start_run(connection, &channel);
         let ctx = self.ctx.clone();
 
         tokio::spawn(async move {
             let sessions: &SessionRegistry = &ctx.sessions;
             let started = Instant::now();
             let mut sink = BatchingSink::new(events.clone(), 0);
-            let outcome = session.fetch_more(page_size, &cancel, &mut sink).await;
+            let outcome = match sessions.channel(connection, &channel).await {
+                Ok(exec) => exec.fetch_more(page_size, &cancel, &mut sink).await,
+                Err(e) => Err(e),
+            };
             sink.flush();
             let outcome = outcome.inspect(|page| {
                 // Same result set: keep its token valid while it has rows left.
                 if !page.has_more {
-                    sessions.forget_result(connection);
+                    sessions.forget_result(connection, &channel);
                 }
             });
             let token = move |page: &PageOutcome| page.has_more.then_some(result_token);
@@ -110,12 +127,18 @@ impl QueryService {
     }
 
     /// Releases a result set the UI no longer shows, unless another one replaced it.
-    pub async fn close_result(&self, connection: Uuid, result_token: u64) -> Result<()> {
-        if !self.ctx.sessions.is_open_result(connection, result_token) {
+    pub async fn close_result(&self, connection: Uuid, channel: &str, result_token: u64) -> Result<()> {
+        if !self.ctx.sessions.is_open_result(connection, channel, result_token) {
             return Ok(());
         }
-        self.ctx.sessions.forget_result(connection);
-        self.ctx.sessions.get(connection)?.close_result().await
+        self.ctx.sessions.forget_result(connection, channel);
+        self.ctx.sessions.channel(connection, channel).await?.close_result().await
+    }
+
+    /// Ends a channel the UI no longer uses, cancelling what it is running, and releases
+    /// its connection.
+    pub fn close_channel(&self, connection: Uuid, channel: &str) {
+        self.ctx.sessions.close_channel(connection, channel);
     }
 
     pub fn cancel(&self, run_id: u64) {

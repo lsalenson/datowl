@@ -46,15 +46,19 @@ export interface Backend {
   sideQuery(id: string, sql: string): Promise<Row[]>;
 
   splitStatements(sql: string, dialect: Dialect): Promise<StatementRange[]>;
-  execute(connectionId: string, sql: string, pageSize: number, onEvent: (e: RunEvent) => void): Promise<number>;
+  /** Runs on `channel`: each console has its own transaction, settings and open result. */
+  execute(connectionId: string, channel: string, sql: string, pageSize: number, onEvent: (e: RunEvent) => void): Promise<number>;
   fetchMore(
     connectionId: string,
+    channel: string,
     resultToken: number,
     pageSize: number,
     onEvent: (e: RunEvent) => void,
   ): Promise<number>;
   /** Releases a result set kept open for paging, if it is still the current one. */
-  closeResult(connectionId: string, resultToken: number): Promise<void>;
+  closeResult(connectionId: string, channel: string, resultToken: number): Promise<void>;
+  /** Ends a channel, cancelling what it runs, and releases its connection. */
+  closeChannel(connectionId: string, channel: string): Promise<void>;
   cancel(runId: number): Promise<void>;
 
   listConsoles(id: string): Promise<string[]>;

@@ -38,9 +38,7 @@ impl ConnectionService {
             None => self.ctx.storage().data_sources.password(config.id)?,
         };
         let session = self.ctx.engines.get(config.driver)?.connect(config, password.as_deref()).await?;
-        let version = session.server_version().to_owned();
-        session.close().await;
-        Ok(version)
+        Ok(session.server_version().to_owned())
     }
 
     /// Connects and returns the server version. `password` overrides the keychain, for
@@ -55,15 +53,12 @@ impl ConnectionService {
         };
         let session = self.ctx.engines.get(config.driver)?.connect(&config, password.as_deref()).await?;
         let server_version = session.server_version().to_owned();
-        if let Some(previous) = self.ctx.sessions.insert(id, session) {
-            previous.close().await;
-        }
+        self.ctx.sessions.insert(id, session);
         Ok(server_version)
     }
 
+    /// Returns right away: running statements are cancelled and cleaned up in the background.
     pub async fn disconnect(&self, id: Uuid) {
-        if let Some(session) = self.ctx.sessions.remove(id) {
-            session.close().await;
-        }
+        self.ctx.sessions.remove(id);
     }
 }

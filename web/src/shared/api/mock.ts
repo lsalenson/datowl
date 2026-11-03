@@ -284,7 +284,7 @@ export const mockBackend: Backend = {
     return ranges;
   },
 
-  execute: async (_connectionId, sql, pageSize, onEvent) => {
+  execute: async (_connectionId, _channel, sql, pageSize, onEvent) => {
     const runId = nextRun++;
     const ranges = await mockBackend.splitStatements(sql, 'postgres');
     void (async () => {
@@ -341,7 +341,7 @@ export const mockBackend: Backend = {
     })();
     return runId;
   },
-  fetchMore: async (_connectionId, resultToken, pageSize, onEvent) => {
+  fetchMore: async (_connectionId, _channel, resultToken, pageSize, onEvent) => {
     const runId = nextRun++;
     void (async () => {
       await delay(40);
@@ -355,9 +355,10 @@ export const mockBackend: Backend = {
     })();
     return runId;
   },
-  closeResult: async (_connectionId, resultToken) => {
+  closeResult: async (_connectionId, _channel, resultToken) => {
     if (cursor?.token === resultToken) cursor = null;
   },
+  closeChannel: async () => {},
   cancel: async () => {},
 
   listConsoles: async (id) => [...consoles.keys()].filter((k) => k.startsWith(id)).map((k) => k.split('/')[1]),

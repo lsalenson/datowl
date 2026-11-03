@@ -44,7 +44,8 @@ export function parseConnectionUrl(text: string): SourcePrefill {
   let database: string | undefined;
   if (driver === 'postgres') {
     const sslmode = params.get('sslmode');
-    tls = sslmode === 'require' || sslmode === 'verify-ca' || sslmode === 'verify-full' || flag('ssl') ? 'require' : sslmode === 'disable' ? 'disable' : 'prefer';
+    if (sslmode === 'verify-ca' || sslmode === 'verify-full' || sslmode === 'require' || sslmode === 'disable') tls = sslmode;
+    else tls = flag('ssl') ? 'require' : 'prefer';
     database = path || params.get('dbname') || undefined;
     port ??= 5432;
   } else {

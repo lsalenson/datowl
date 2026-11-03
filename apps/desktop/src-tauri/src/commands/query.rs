@@ -18,11 +18,12 @@ pub fn split_statements(app: State<'_, App>, sql: String, dialect: Dialect) -> V
 pub async fn execute(
     app: State<'_, App>,
     connection_id: Uuid,
+    channel: String,
     sql: String,
     page_size: usize,
     on_event: Channel<RunEvent>,
 ) -> CommandResult<u64> {
-    Ok(app.query.execute(connection_id, sql, page_size, Arc::new(ChannelEvents(on_event)))?)
+    Ok(app.query.execute(connection_id, channel, sql, page_size, Arc::new(ChannelEvents(on_event)))?)
 }
 
 /// Continues the result set identified by `result_token`.
@@ -30,17 +31,25 @@ pub async fn execute(
 pub async fn fetch_more(
     app: State<'_, App>,
     connection_id: Uuid,
+    channel: String,
     result_token: u64,
     page_size: usize,
     on_event: Channel<RunEvent>,
 ) -> CommandResult<u64> {
-    Ok(app.query.fetch_more(connection_id, result_token, page_size, Arc::new(ChannelEvents(on_event)))?)
+    Ok(app.query.fetch_more(connection_id, channel, result_token, page_size, Arc::new(ChannelEvents(on_event)))?)
 }
 
 /// Releases a result set the UI no longer shows, unless another one replaced it.
 #[tauri::command]
-pub async fn close_result(app: State<'_, App>, connection_id: Uuid, result_token: u64) -> CommandResult<()> {
-    Ok(app.query.close_result(connection_id, result_token).await?)
+pub async fn close_result(app: State<'_, App>, connection_id: Uuid, channel: String, result_token: u64) -> CommandResult<()> {
+    Ok(app.query.close_result(connection_id, &channel, result_token).await?)
+}
+
+/// Ends the execution channel of a console that is gone.
+#[tauri::command]
+pub async fn close_channel(app: State<'_, App>, connection_id: Uuid, channel: String) -> CommandResult<()> {
+    app.query.close_channel(connection_id, &channel);
+    Ok(())
 }
 
 #[tauri::command]

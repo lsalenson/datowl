@@ -6,7 +6,7 @@
 //! every value arrives already rendered by the server, so no type decoding is needed.
 //!
 //! In autocommit mode a cursor needs a transaction: Datowl opens one, and commits it as
-//! soon as the result is exhausted or anything else runs on the connection.
+//! soon as the result is exhausted or anything else runs on the channel.
 
 use futures_util::{pin_mut, StreamExt};
 use tokio_postgres::{error::SqlState, SimpleQueryMessage};
@@ -14,7 +14,7 @@ use datowl_domain::{CancellationToken, Column, Error, PageOutcome, Result, Resul
 
 use crate::{
     error::{has_code, query_error},
-    PgSession,
+    PgChannel,
 };
 
 const CURSOR: &str = "datowl_cursor";
@@ -38,7 +38,7 @@ struct Streamed {
     affected: Option<u64>,
 }
 
-impl PgSession {
+impl PgChannel {
     pub(crate) async fn run_statement(
         &self,
         state: &mut ExecState,
@@ -100,8 +100,8 @@ impl PgSession {
             "CLOSE datowl_cursor"
         };
         // A failed CLOSE means the transaction is aborted: roll back the one we opened.
-        if self.exec.simple_query(sql).await.is_err() && cursor.owns_transaction {
-            let _ = self.exec.simple_query("ROLLBACK").await;
+        if self.client.simple_query(sql).await.is_err() && cursor.owns_transaction {
+            let _ = self.client.simple_query("ROLLBACK").await;
         }
     }
 
@@ -110,14 +110,14 @@ impl PgSession {
     async fn declare_cursor(&self, sql: &str, sink: &mut dyn ResultSink) -> std::result::Result<bool, Declare> {
         let declare = format!("{DECLARE_PREFIX}{sql}");
         // Pipelined: describing the query (for column types) costs no extra round trip.
-        let (prepared, declared) = tokio::join!(self.exec.prepare(sql), self.exec.simple_query(&declare));
+        let (prepared, declared) = tokio::join!(self.client.prepare(sql), self.client.simple_query(&declare));
 
         // Both parse the same query; the prepare error is reported against the user's text.
         let statement = match prepared {
             Ok(statement) => statement,
             Err(e) => {
                 if declared.is_ok() {
-                    let _ = self.exec.simple_query("CLOSE datowl_cursor").await;
+                    let _ = self.client.simple_query("CLOSE datowl_cursor").await;
                 }
                 return Err(Declare::Failed(query_error(e, 0)));
             }
@@ -127,8 +127,8 @@ impl PgSession {
             Ok(_) => false,
             Err(e) if has_code(&e, &SqlState::NO_ACTIVE_SQL_TRANSACTION) => {
                 let begin = format!("BEGIN; {declare}");
-                if let Err(e) = self.exec.simple_query(&begin).await {
-                    let _ = self.exec.simple_query("ROLLBACK").await;
+                if let Err(e) = self.client.simple_query(&begin).await {
+                    let _ = self.client.simple_query("ROLLBACK").await;
                     return Err(classify(e, char_len(&begin) - char_len(sql)));
                 }
                 true
@@ -158,7 +158,7 @@ impl PgSession {
         cancel: &CancellationToken,
         sink: &mut dyn ResultSink,
     ) -> Result<Streamed> {
-        let stream = self.exec.simple_query_raw(sql).await.map_err(|e| query_error(e, 0))?;
+        let stream = self.client.simple_query_raw(sql).await.map_err(|e| query_error(e, 0))?;
         // Created once: re-arming the cancellation future for every row is measurable.
         let cancelled = cancel.cancelled();
         pin_mut!(stream, cancelled);
@@ -170,7 +170,7 @@ impl PgSession {
                 biased;
                 _ = &mut cancelled, if !cancel_sent => {
                     cancel_sent = true;
-                    let _ = self.exec.cancel_token().cancel_query(self.tls.clone()).await;
+                    let _ = self.client.cancel_token().cancel_query(self.tls.clone()).await;
                     continue;
                 }
                 message = stream.next() => message,

@@ -48,7 +48,8 @@ export const EDITOR_OPTIONS: monaco.editor.IStandaloneEditorConstructionOptions 
   fixedOverflowWidgets: true,
   lineNumbersMinChars: 4,
   lineDecorationsWidth: 10,
-  folding: false,
+  folding: true,
+  showFoldingControls: 'mouseover',
   overviewRulerLanes: 0,
   hideCursorInOverviewRuler: true,
   scrollbar: { verticalScrollbarSize: 10, horizontalScrollbarSize: 10, useShadows: false },
@@ -105,7 +106,7 @@ export function SqlEditor({ tab, active }: { tab: DocumentTab; active: boolean }
     const doc = documentOf(tab);
     const isSql = languageOf(tab) === 'sql';
     const model = monaco.editor.getModel(doc.uri) ?? monaco.editor.createModel('', languageOf(tab), doc.uri);
-    bindModel(model, tab.connectionId);
+    bindModel(model, tab.connectionId, tab.id);
     const editor = monaco.editor.create(host.current!, { ...EDITOR_OPTIONS, model });
     const dialect = (): Dialect =>
       useConnections.getState().list.find((c) => c.id === tab.connectionId)?.driver ?? 'postgres';

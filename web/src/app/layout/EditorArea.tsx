@@ -15,7 +15,6 @@ import {
 import type { MouseEvent } from 'react';
 
 import { IconButton } from '@/shared/ui/IconButton';
-import { backend } from '@/shared/api';
 import { quoteIdent } from '@/shared/lib/sql';
 import { useConnections } from '@/features/connections';
 import { tabResults, useResults } from '@/features/query';
@@ -30,10 +29,6 @@ import { TableView } from '@/features/query';
 const TAB_ICONS = { console: SquareTerminal, table: Table2, ddl: FileCode2, file: FileText };
 
 function closeTab(tab: EditorTab) {
-  // Release a server-side cursor this tab may still hold.
-  for (const set of useResults.getState().byTab[tab.id]?.sets ?? []) {
-    if (set.hasMore && set.resultToken !== null) void backend.closeResult(tab.connectionId, set.resultToken);
-  }
   useResults.getState().dropTab(tab.id);
   useWorkspace.getState().close(tab.id);
 }
@@ -124,6 +119,8 @@ function ConsoleToolbar({ tab }: { tab: Extract<EditorTab, { kind: 'console' }> 
   const results = useResults(tabResults(tab.id));
   const connection = useConnections((s) => s.list.find((c) => c.id === tab.connectionId));
   const snapshot = useConnections((s) => s.schema[tab.connectionId]);
+  const consoleSchema = useConnections((s) => s.consoleSchemas[tab.connectionId]?.[tab.id]);
+  const currentSchema = consoleSchema ?? snapshot?.defaultSchema;
   const openMenu = useUi((s) => s.openMenu);
   const commands = () => editorRegistry.get(tab.id);
 
@@ -135,7 +132,8 @@ function ConsoleToolbar({ tab }: { tab: Extract<EditorTab, { kind: 'console' }> 
     ]);
   };
 
-  // Switching the default schema runs SET search_path (Postgres) or USE (ClickHouse).
+  // Switching the default schema runs SET search_path (Postgres) or USE (ClickHouse), which
+  // holds for this console only: each one has its own connection.
   const schemaMenu = (e: MouseEvent) => {
     if (!connection || !snapshot) return;
     const r = e.currentTarget.getBoundingClientRect();
@@ -144,21 +142,20 @@ function ConsoleToolbar({ tab }: { tab: Extract<EditorTab, { kind: 'console' }> 
       r.left,
       r.bottom + 4,
       schemas.map((schema) => ({
-        label: schema === snapshot.defaultSchema ? `${schema}  ✓` : schema,
+        label: schema === currentSchema ? `${schema}  ✓` : schema,
         onSelect: async () => {
           const ident = quoteIdent(schema, connection.driver);
           const sql = connection.driver === 'postgres' ? `SET search_path TO ${ident}` : `USE ${ident}`;
-          await runSql(tab.id, tab.connectionId, sql);
-          useConnections.setState((s) => ({
-            schema: { ...s.schema, [tab.connectionId]: { ...snapshot, defaultSchema: schema } },
-          }));
+          let failed = false;
+          await runSql(tab.id, tab.connectionId, sql, { onError: () => (failed = true) });
+          if (!failed) useConnections.getState().setConsoleSchema(tab.connectionId, tab.id, schema);
         },
       })),
     );
   };
 
   const target = connection
-    ? `${connection.driver === 'postgres' ? `${connection.database}.` : ''}${snapshot?.defaultSchema ?? '…'}`
+    ? `${connection.driver === 'postgres' ? `${connection.database}.` : ''}${currentSchema ?? '…'}`
     : '';
 
   return (

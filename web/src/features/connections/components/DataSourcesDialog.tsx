@@ -46,7 +46,7 @@ function connectionUrl(c: ConnectionConfig): string {
   if (c.driver === 'postgres') {
     return `postgresql://${c.user ? `${c.user}@` : ''}${c.host}:${c.port}/${c.database}${c.tls !== 'disable' ? `?sslmode=${c.tls}` : ''}`;
   }
-  return `${c.tls === 'require' ? 'https' : 'http'}://${c.host}:${c.port}/?database=${c.database || 'default'}`;
+  return `${c.tls === 'disable' || c.tls === 'prefer' ? 'http' : 'https'}://${c.host}:${c.port}/?database=${c.database || 'default'}`;
 }
 
 type TestState = { status: 'idle' } | { status: 'running' } | { status: 'ok'; version: string } | { status: 'error'; message: string };
@@ -336,12 +336,15 @@ function Dialog() {
                   <>
                     <option value="disable">disable</option>
                     <option value="prefer">prefer</option>
-                    <option value="require">require</option>
+                    <option value="require">require (not verified)</option>
+                    <option value="verify-ca">verify-ca</option>
+                    <option value="verify-full">verify-full</option>
                   </>
                 ) : (
                   <>
                     <option value="disable">HTTP</option>
                     <option value="require">HTTPS</option>
+                    <option value="verify-ca">HTTPS, any host name</option>
                   </>
                 )}
               </select>

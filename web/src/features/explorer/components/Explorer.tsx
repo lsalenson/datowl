@@ -36,7 +36,7 @@ import { useUi, type MenuItem } from '@/shared/model/ui';
 import { useWorkspace } from '@/features/workspace';
 import { parseConnectionUrl } from '@/features/connections';
 import { log } from '@/shared/model/output';
-import { executeStatement } from '@/features/query';
+import { executeStatement, releaseOpenResults } from '@/features/query';
 import { DriverBadge, NodeIcon } from '@/shared/ui/NodeIcon';
 import {
   canDrop,
@@ -263,6 +263,7 @@ export function Explorer() {
   const apply = async (row: Row, target: Target, sql: string) => {
     const { connection } = row;
     try {
+      await releaseOpenResults(connection.id);
       await executeStatement(connection.id, sql);
     } catch (e) {
       await ask({ title: 'Statement Failed', message: errorMessage(e), preview: sql, confirmLabel: 'Close' });

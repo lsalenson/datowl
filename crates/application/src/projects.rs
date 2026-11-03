@@ -64,10 +64,7 @@ impl ProjectService {
         if id == self.ctx.project_id() {
             return Ok(());
         }
-        for session in self.ctx.switch_project(id)? {
-            session.close().await;
-        }
-        Ok(())
+        self.ctx.switch_project(id)
     }
 
     pub fn rename(&self, id: Uuid, name: &str) -> Result<ProjectEntry> {

@@ -45,6 +45,7 @@ pub fn run() {
             commands::query::execute,
             commands::query::fetch_more,
             commands::query::close_result,
+            commands::query::close_channel,
             commands::query::cancel,
             commands::consoles::list_consoles,
             commands::consoles::read_console,

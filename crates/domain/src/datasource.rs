@@ -26,8 +26,11 @@ impl DriverKind {
     }
 }
 
-/// Transport security, following libpq's `sslmode` vocabulary.
-/// For ClickHouse, `Require` switches the HTTP interface to HTTPS.
+/// Transport security, following libpq's `sslmode` vocabulary: `Prefer` and `Require`
+/// encrypt without authenticating the server, `VerifyCa` checks its certificate chain
+/// and `VerifyFull` also its host name.
+/// ClickHouse has no opportunistic mode: `Prefer` stays on HTTP, and `Require` is HTTPS
+/// with full verification.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum TlsMode {
@@ -35,6 +38,10 @@ pub enum TlsMode {
     Disable,
     Prefer,
     Require,
+    #[serde(rename = "verify-ca")]
+    VerifyCa,
+    #[serde(rename = "verify-full")]
+    VerifyFull,
 }
 
 /// A saved data source. The password never lives here: it is kept in the OS keychain.

@@ -8,7 +8,7 @@ IDE base de données façon DataGrip, pour **PostgreSQL** et **ClickHouse**. Bac
 cd web && npm install && cd ../apps/desktop && npm install
 npm --prefix apps/desktop run dev      # app desktop (Rust + React)
 npm --prefix web run dev               # UI seule dans un navigateur, avec un backend de démo
-npm --prefix apps/desktop run build    # Datowl.app + .dmg
+npm --prefix apps/desktop run build    # installeurs de l'OS courant (.dmg, .exe, .AppImage + .deb)
 npm --prefix site run dev              # landing page (Next.js), http://localhost:3210
 npm --prefix site run build            # export statique dans site/out/, à héberger tel quel
 ```
@@ -24,7 +24,7 @@ crates/
   infrastructure/
     postgres/       moteur tokio-postgres (pagination par curseur serveur, notices, DDL)
     clickhouse/     moteur HTTP (TSV en streaming, sessions, KILL QUERY)
-    store/          sources (JSON), mots de passe (Trousseau macOS), consoles, dossier projet
+    store/          sources (JSON), mots de passe (trousseau de l'OS), consoles, dossier projet
 apps/desktop/       interface : commandes IPC Tauri, racine de composition
 web/src/
   app/              assemblage de l'interface (layout, barre d'outils, zone d'édition)

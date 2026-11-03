@@ -28,7 +28,7 @@
   --blur: blur(30px) saturate(160%);
 
   --font-ui: 'Outfit Variable', -apple-system, BlinkMacSystemFont, sans-serif;
-  --font-mono: ui-monospace, 'SF Mono', Menlo, monospace;
+  --font-mono: ui-monospace, 'SF Mono', Menlo, Consolas, 'DejaVu Sans Mono', monospace;
 
   /* DataGrip's islands: ~10px islands, 6px tabs and fields, 4px rows and buttons. */
   --r-island: 10px;
@@ -144,8 +144,8 @@ kbd,
   background: var(--tint);
 }
 
-/* Outside Tauri there is no desktop behind the window: paint one. */
-html:not(.tauri) .app::before {
+/* Without the macOS glass window there is no desktop behind the page: paint one. */
+html:not(.glass) .app::before {
   content: '';
   position: absolute;
   inset: 0;
@@ -284,7 +284,12 @@ button.tool-select:hover {
   display: flex;
   align-items: center;
   gap: 2px;
-  padding: 0 8px 0 78px;
+  padding: 0 8px;
+}
+
+/* Room for the traffic lights, which overlay the page in the macOS window. */
+html.glass .topbar {
+  padding-left: 78px;
 }
 
 .widget {
@@ -2202,7 +2207,7 @@ button.tool-select:hover {
 /* In the desktop app the webview is transparent and the OS draws the glass behind it,
    so a CSS backdrop blur on the islands has nothing to blur: it only forces WebKit to
    recomposite the island on every repaint (each keystroke, each caret blink). */
-html.tauri .card {
+html.glass .card {
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
 }

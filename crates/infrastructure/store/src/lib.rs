@@ -5,7 +5,7 @@
 //! <app data>/projects.json                       projects (see `projects`)
 //! <project dir>/connections.json                 data sources (no secrets)
 //! <project dir>/consoles/<id>/<name>.sql         console contents, one folder per data source
-//! macOS Keychain, service "dev.datowl.app"      passwords, keyed by data source id
+//! OS keychain, service "dev.datowl.app"         passwords, keyed by data source id
 //! ```
 
 mod files;

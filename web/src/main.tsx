@@ -12,8 +12,9 @@ import { startUpdateChecks } from '@/features/updates';
 import { useWorkspace } from '@/features/workspace';
 
 async function start() {
-  // The Tauri window is translucent; the browser build paints its own backdrop.
-  if (isTauri) document.documentElement.classList.add('tauri');
+  // Only the macOS window is translucent (tauri.macos.conf.json); everywhere else the page
+  // paints its own backdrop.
+  if (isTauri && navigator.userAgent.includes('Mac')) document.documentElement.classList.add('glass');
   await useProjects.getState().load().catch(() => {});
   const project = useProjects.getState().current;
   if (project) useWorkspace.getState().hydrate(project.id);

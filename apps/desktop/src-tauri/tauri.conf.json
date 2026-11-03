@@ -21,37 +21,24 @@
         "minWidth": 960,
         "minHeight": 600,
         "center": true,
-        "resizable": true,
-        "titleBarStyle": "Overlay",
-        "hiddenTitle": true,
-        "trafficLightPosition": {
-          "x": 14,
-          "y": 20
-        },
-        "transparent": true,
-        "windowEffects": {
-          "effects": [
-            "liquidGlassClear",
-            "underWindowBackground"
-          ],
-          "state": "active",
-          "radius": 14
-        }
+        "resizable": true
       }
     ],
     "security": {
       "csp": null
-    },
-    "macOSPrivateApi": true
+    }
   },
   "bundle": {
     "active": true,
     "targets": [
       "app",
-      "dmg"
+      "dmg",
+      "nsis",
+      "appimage",
+      "deb"
     ],
     "category": "DeveloperTool",
-    "shortDescription": "IDE base de donn\u00e9es pour PostgreSQL et ClickHouse",
+    "shortDescription": "IDE base de données pour PostgreSQL et ClickHouse",
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -59,10 +46,6 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
-    "macOS": {
-      "minimumSystemVersion": "11.0",
-      "signingIdentity": "-"
-    },
     "createUpdaterArtifacts": true
   },
   "plugins": {

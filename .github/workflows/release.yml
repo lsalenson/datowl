@@ -1,0 +1,88 @@
+# Builds the installers of every OS. A pushed tag (scripts/release.sh) publishes them as a
+# GitHub release; a manual run only builds them, as workflow artifacts to try out.
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  # The draft stays invisible to the updater until the last job: a build failing on one OS
+  # never leaves a partial release as "latest".
+  draft:
+    runs-on: ubuntu-latest
+    outputs:
+      id: ${{ steps.draft.outputs.id }}
+      notes: ${{ steps.draft.outputs.notes }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: draft
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          # checkout flattens the annotated tag; its message holds the release notes.
+          git fetch --force origin "refs/tags/$TAG:refs/tags/$TAG"
+          notes="$(git tag -l --format='%(contents)' "$TAG")"
+          gh release create "$TAG" --draft --verify-tag --title "Datowl ${TAG#v}" --notes "$notes"
+          id="$(gh api "repos/$GITHUB_REPOSITORY/releases" --jq ".[] | select(.tag_name == \"$TAG\") | .id")"
+          echo "id=$id" >> "$GITHUB_OUTPUT"
+          { echo 'notes<<NOTES_END'; echo "$notes"; echo 'NOTES_END'; } >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: draft
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            args: --target universal-apple-darwin
+          - os: windows-latest
+            args: ''
+          # The oldest supported runner: an AppImage only runs on a glibc at least as recent.
+          - os: ubuntu-22.04
+            args: ''
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ startsWith(matrix.os, 'macos') && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+      - uses: swatinem/rust-cache@v2
+      - name: Install Linux build dependencies
+        if: startsWith(matrix.os, 'ubuntu')
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf xdg-utils libdbus-1-dev libssl-dev pkg-config
+      - run: npm ci --prefix web
+      - run: npm ci --prefix apps/desktop
+      - uses: tauri-apps/tauri-action@v1
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          projectPath: apps/desktop
+          args: ${{ matrix.args }}
+          # Left empty on a manual run: the action then builds without publishing anything.
+          releaseId: ${{ needs.draft.outputs.id }}
+          tagName: ${{ needs.draft.outputs.id && github.ref_name || '' }}
+          releaseBody: ${{ needs.draft.outputs.notes }}
+          uploadWorkflowArtifacts: ${{ github.event_name == 'workflow_dispatch' }}
+
+  publish:
+    needs: [draft, build]
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    steps:
+      - env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release edit "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --draft=false --latest

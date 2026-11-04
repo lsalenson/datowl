@@ -35,4 +35,9 @@ impl FileService {
     pub fn write(&self, path: &Path, text: &str) -> Result<()> {
         self.ctx.files.write_file(&self.root()?, path, text)
     }
+
+    /// Writes query results to a file the user chose; not limited to the project folder.
+    pub fn export(&self, path: &Path, text: &str) -> Result<()> {
+        self.ctx.files.export_file(path, text)
+    }
 }

@@ -12,6 +12,12 @@ pub fn list_projects(app: State<'_, App>) -> ProjectList {
     app.projects.list()
 }
 
+/// Problems met while loading (a damaged file set aside), once.
+#[tauri::command]
+pub fn take_notices(app: State<'_, App>) -> Vec<String> {
+    app.projects.take_notices()
+}
+
 #[tauri::command]
 pub fn create_project(app: State<'_, App>, name: String, path: Option<PathBuf>) -> CommandResult<ProjectEntry> {
     Ok(app.projects.create(&name, path)?)

@@ -37,6 +37,8 @@ pub enum RunEvent {
         index: usize,
         message: String,
         position: Option<u32>,
+        /// The session is gone: the next statement must reconnect.
+        connection_lost: bool,
     },
     Finished {
         elapsed_ms: f64,

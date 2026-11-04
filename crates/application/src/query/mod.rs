@@ -59,13 +59,14 @@ impl QueryService {
             let exec = match exec {
                 Ok(exec) => exec,
                 Err(e) => {
-                    events.send(RunEvent::Error { index: 0, position: None, message: e.to_string() });
+                    events.send(RunEvent::Error { index: 0, position: None, message: e.to_string(), connection_lost: e.is_connection_lost() });
                     events.send(RunEvent::Finished { elapsed_ms: ms(started), cancelled: cancel.is_cancelled() });
                     sessions.finish_run(run_id);
                     return;
                 }
             };
             let mut cancelled = false;
+            let mut lost = false;
             let mut offsets = Utf16Cursor::new(&sql);
 
             for (index, span) in datowl_domain::split_statements(&sql, dialect).iter().enumerate() {
@@ -81,6 +82,7 @@ impl QueryService {
                 let mut sink = BatchingSink::new(events.clone(), index);
                 let outcome = exec.execute(statement, page_size, &cancel, &mut sink).await;
                 sink.flush();
+                lost = outcome.as_ref().is_err_and(Error::is_connection_lost);
                 let token = |page: &PageOutcome| page.has_more.then(|| sessions.open_result(connection, &channel));
                 if !report(&*events, index, outcome, statement_started, token) {
                     cancelled = cancel.is_cancelled();
@@ -90,6 +92,9 @@ impl QueryService {
 
             events.send(RunEvent::Finished { elapsed_ms: ms(started), cancelled });
             sessions.finish_run(run_id);
+            if lost {
+                sessions.remove(connection);
+            }
         });
         Ok(run_id)
     }
@@ -118,10 +123,14 @@ impl QueryService {
                     sessions.forget_result(connection, &channel);
                 }
             });
+            let lost = outcome.as_ref().is_err_and(Error::is_connection_lost);
             let token = move |page: &PageOutcome| page.has_more.then_some(result_token);
             let ok = report(&*events, 0, outcome, started, token);
             events.send(RunEvent::Finished { elapsed_ms: ms(started), cancelled: !ok && cancel.is_cancelled() });
             sessions.finish_run(run_id);
+            if lost {
+                sessions.remove(connection);
+            }
         });
         Ok(run_id)
     }
@@ -169,7 +178,7 @@ fn report(
             true
         }
         Err(e) => {
-            events.send(RunEvent::Error { index, position: e.position(), message: e.to_string() });
+            events.send(RunEvent::Error { index, position: e.position(), message: e.to_string(), connection_lost: e.is_connection_lost() });
             false
         }
     }

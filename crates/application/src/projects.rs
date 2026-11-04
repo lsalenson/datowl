@@ -67,6 +67,11 @@ impl ProjectService {
         self.ctx.switch_project(id)
     }
 
+    /// Problems met while loading, to show the user once.
+    pub fn take_notices(&self) -> Vec<String> {
+        self.ctx.projects.take_notices()
+    }
+
     pub fn rename(&self, id: Uuid, name: &str) -> Result<ProjectEntry> {
         let name = ProjectInfo::validate_name(name)?;
         Ok(self.entry(self.ctx.projects.rename(id, name)?))

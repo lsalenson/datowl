@@ -5,7 +5,9 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 
 import { App } from '@/app/App';
-import { isTauri } from '@/shared/api';
+import { backend, isTauri } from '@/shared/api';
+import { useUi } from '@/shared/model/ui';
+import { ErrorBoundary } from '@/shared/ui/ErrorBoundary';
 import { useConnections } from '@/features/connections';
 import { useProjects } from '@/features/projects';
 import { startUpdateChecks } from '@/features/updates';
@@ -22,14 +24,21 @@ async function start() {
   // Drop restored tabs whose data source no longer exists.
   const ids = new Set(useConnections.getState().list.map((c) => c.id));
   const workspace = useWorkspace.getState();
-  for (const tab of workspace.tabs) if (!ids.has(tab.connectionId)) workspace.close(tab.id);
+  // A file with no data source (connectionId '') has nothing to lose.
+  for (const tab of workspace.tabs) if (tab.connectionId && !ids.has(tab.connectionId)) workspace.close(tab.id);
 
   startUpdateChecks();
   createRoot(document.getElementById('root')!).render(
     <StrictMode>
-      <App />
+      <ErrorBoundary>
+        <App />
+      </ErrorBoundary>
     </StrictMode>,
   );
+
+  for (const message of await backend.takeNotices().catch(() => [])) {
+    await useUi.getState().ask({ title: 'Damaged File', message, confirmLabel: 'Close' });
+  }
 }
 
 void start();

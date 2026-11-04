@@ -1,6 +1,7 @@
 // Drives statement execution: streams backend events into result sets and the output log.
 
-import { backend, errorMessage, type Row, type RunEvent } from '@/shared/api';
+import { backend, errorMessage, isConnectionLost, type Row, type RunEvent } from '@/shared/api';
+import { transactionEffect } from '@/shared/lib/sql';
 import { useConnections } from '@/features/connections';
 import { useWorkspace } from '@/features/workspace';
 import { log } from '@/shared/model/output';
@@ -32,6 +33,20 @@ useWorkspace.subscribe((state, previous) => {
   }
 });
 
+// A session that ended took its transactions with it.
+useConnections.subscribe((state, previous) => {
+  if (state.state === previous.state) return;
+  for (const [id, was] of Object.entries(previous.state)) {
+    if (was.status !== 'connected' || state.state[id]?.status === 'connected') continue;
+    for (const tab of useWorkspace.getState().tabs) {
+      if (tab.connectionId === id && useResults.getState().byTab[tab.id]?.transactionOpen) useResults.getState().setTransactionOpen(tab.id, false);
+    }
+  }
+});
+
+/** Results stop growing here: all of them live in this process's memory. */
+export const MAX_LOADED_ROWS = 1_000_000;
+
 export async function runSql(tabId: string, connectionId: string, sql: string, options: RunOptions = {}): Promise<void> {
   const connections = useConnections.getState();
   const source = connections.list.find((c) => c.id === connectionId)?.name ?? 'unknown';
@@ -44,6 +59,7 @@ export async function runSql(tabId: string, connectionId: string, sql: string, o
   const offsets = new Map<number, { offset: number; sql: string }>();
   const sets = new Map<number, ResultSet>();
   let done: () => void = () => {};
+  let lost: string | null = null;
   const finished = new Promise<void>((resolve) => (done = resolve));
 
   const onEvent = (e: RunEvent) => {
@@ -87,6 +103,8 @@ export async function runSql(tabId: string, connectionId: string, sql: string, o
       case 'statementFinished': {
         const set = sets.get(e.index);
         const time = formatMs(e.elapsedMs);
+        const effect = transactionEffect(offsets.get(e.index)?.sql ?? '');
+        if (effect) store.setTransactionOpen(tabId, effect === 'open');
         if (set) {
           store.updateSet(tabId, set.id, {
             status: 'done',
@@ -107,7 +125,10 @@ export async function runSql(tabId: string, connectionId: string, sql: string, o
       case 'error': {
         log('error', source, e.message);
         options.onError?.(e.message);
+        if (e.connectionLost) lost = e.message;
         const set = sets.get(e.index);
+        // An earlier statement's grid must not hide the failure of this one.
+        if (!set && !options.title) useUi.getState().setBottomTab('output');
         if (set) store.updateSet(tabId, set.id, { status: 'error', error: e.message });
         const statement = offsets.get(e.index);
         if (statement && e.position !== null) {
@@ -122,8 +143,12 @@ export async function runSql(tabId: string, connectionId: string, sql: string, o
           }
         }
         if (e.cancelled) log('info', source, 'Execution cancelled');
-        if (sets.size === 0 && !options.title) useUi.getState().setBottomTab('output');
+        if (!options.title) {
+          useUi.getState().setServicesVisible(true);
+          if (sets.size === 0) useUi.getState().setBottomTab('output');
+        }
         store.endRun(tabId);
+        if (lost !== null) useConnections.getState().markLost(connectionId, lost);
         done();
         break;
     }
@@ -136,6 +161,11 @@ export async function runSql(tabId: string, connectionId: string, sql: string, o
     log('error', source, errorMessage(e));
     options.onError?.(errorMessage(e));
     useResults.getState().endRun(tabId);
+    if (isConnectionLost(e)) useConnections.getState().markLost(connectionId, errorMessage(e));
+    if (!options.title) {
+      useUi.getState().setServicesVisible(true);
+      useUi.getState().setBottomTab('output');
+    }
     done();
   }
   return finished;
@@ -146,11 +176,12 @@ export async function fetchMore(tabId: string, connectionId: string, setId: stri
   const store = useResults.getState();
   const set = store.byTab[tabId]?.sets.find((s) => s.id === setId);
   if (!set || set.fetching || !set.hasMore || set.resultToken === null) return;
+  if (set.buffer.rows.length >= MAX_LOADED_ROWS) return;
   const source = useConnections.getState().list.find((c) => c.id === connectionId)?.name ?? 'unknown';
 
   store.updateSet(tabId, setId, { fetching: true });
   const before = set.buffer.rows.length;
-  const pageSize = all ? 10_000_000 : useUi.getState().pageSize;
+  const pageSize = all ? MAX_LOADED_ROWS - before : Math.min(useUi.getState().pageSize, MAX_LOADED_ROWS - before);
 
   await new Promise<void>((resolve) => {
     const onEvent = (e: RunEvent) => {
@@ -166,6 +197,7 @@ export async function fetchMore(tabId: string, connectionId: string, setId: stri
         case 'error':
           s.updateSet(tabId, setId, { hasMore: false, resultToken: null, fetching: false });
           log('error', source, e.message);
+          if (e.connectionLost) useConnections.getState().markLost(connectionId, e.message);
           break;
         case 'finished':
           s.updateSet(tabId, setId, { fetching: false });
@@ -179,6 +211,7 @@ export async function fetchMore(tabId: string, connectionId: string, setId: stri
       (e) => {
         useResults.getState().updateSet(tabId, setId, { hasMore: false, resultToken: null, fetching: false });
         log('error', source, errorMessage(e));
+        if (isConnectionLost(e)) useConnections.getState().markLost(connectionId, errorMessage(e));
         resolve();
       },
     );
@@ -241,6 +274,7 @@ export async function executeStatement(connectionId: string, sql: string): Promi
       } else if (e.kind === 'error') {
         failure = e.message;
         log('error', source, e.message);
+        if (e.connectionLost) useConnections.getState().markLost(connectionId, e.message);
       } else if (e.kind === 'finished') {
         if (failure !== null) reject(new Error(failure));
         else resolve(rows);
@@ -248,6 +282,7 @@ export async function executeStatement(connectionId: string, sql: string): Promi
     };
     backend.execute(connectionId, EXPLORER_CHANNEL, sql, 1000, onEvent).catch((e) => {
       log('error', source, errorMessage(e));
+      if (isConnectionLost(e)) useConnections.getState().markLost(connectionId, errorMessage(e));
       reject(new Error(errorMessage(e)));
     });
   });

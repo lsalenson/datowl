@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 
 import { backend, type ObjectRef } from '@/shared/api';
+import { baseName } from '@/shared/lib/path';
 import { loadJson, saveJson } from '@/shared/model/storage';
 
 export type EditorTab =
@@ -10,9 +11,19 @@ export type EditorTab =
   /** A file of the project folder. `connectionId` runs its SQL; '' when none is attached. */
   | { id: string; kind: 'file'; connectionId: string; path: string };
 
+/** A document with text not yet on disk. */
+export type SaveState = 'dirty' | 'error';
+
 interface WorkspaceStore {
   tabs: EditorTab[];
   activeId: string | null;
+  saveStates: Record<string, SaveState>;
+  setSaveState(id: string, state: SaveState | null): void;
+  /** The document of this tab is being deleted: nothing may write it back. */
+  discard(id: string): void;
+  isDiscarded(id: string): boolean;
+  /** Runs a file on another data source ('' for none). */
+  setTabConnection(id: string, connectionId: string): void;
   /** Restores the open tabs of `projectId` and saves them under it from now on. */
   hydrate(projectId: string): void;
   activate(id: string): void;
@@ -35,17 +46,36 @@ interface Persisted {
 
 // Open tabs are kept per project; `hydrate` loads them once the project is known.
 let storageKey: string | null = null;
+const discarded = new Set<string>();
 
 export const useWorkspace = create<WorkspaceStore>((set, get) => {
-  const open = (tab: EditorTab) =>
+  const open = (tab: EditorTab) => {
+    discarded.delete(tab.id);
     set((s) => ({
       tabs: s.tabs.some((t) => t.id === tab.id) ? s.tabs : [...s.tabs, tab],
       activeId: tab.id,
     }));
+  };
 
   return {
     tabs: [],
     activeId: null,
+    saveStates: {},
+
+    setSaveState: (id, state) =>
+      set((s) => {
+        if ((s.saveStates[id] ?? null) === state) return s;
+        const saveStates = { ...s.saveStates };
+        if (state) saveStates[id] = state;
+        else delete saveStates[id];
+        return { saveStates };
+      }),
+
+    discard: (id) => void discarded.add(id),
+    isDiscarded: (id) => discarded.has(id),
+
+    setTabConnection: (id, connectionId) =>
+      set((s) => ({ tabs: s.tabs.map((t) => (t.id === id && t.kind === 'file' ? { ...t, connectionId } : t)) })),
 
     hydrate: (projectId) => {
       storageKey = `datowl.workspace.${projectId}`;
@@ -86,6 +116,7 @@ export const useWorkspace = create<WorkspaceStore>((set, get) => {
 
     forgetConnection: (connectionId) =>
       set((s) => {
+        for (const t of s.tabs) if (t.connectionId === connectionId) discarded.add(t.id);
         const tabs = s.tabs.filter((t) => t.connectionId !== connectionId);
         return { tabs, activeId: tabs.some((t) => t.id === s.activeId) ? s.activeId : (tabs[0]?.id ?? null) };
       }),
@@ -101,7 +132,7 @@ export function tabTitle(tab: EditorTab): string {
     case 'console':
       return tab.name;
     case 'file':
-      return tab.path.split('/').pop() ?? tab.path;
+      return baseName(tab.path);
     case 'ddl':
     case 'table':
       return tab.object.schema && tab.object.schema !== 'public' ? `${tab.object.schema}.${tab.object.name}` : tab.object.name;

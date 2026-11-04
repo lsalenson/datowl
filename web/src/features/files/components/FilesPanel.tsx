@@ -18,6 +18,7 @@ import { Fragment, useCallback, useEffect, useState, type ButtonHTMLAttributes, 
 
 import { IconButton } from '@/shared/ui/IconButton';
 import { backend, errorMessage, type FileEntry } from '@/shared/api';
+import { isAbsolutePath } from '@/shared/lib/path';
 import { useConnections } from '@/features/connections';
 import { log } from '@/shared/model/output';
 import { displayPath, useProjects } from '@/features/projects';
@@ -86,7 +87,7 @@ export function FilesPanel() {
   // Load every expanded folder that has not been listed yet (the project root at start).
   useEffect(() => {
     for (const [key, open] of Object.entries(expanded)) {
-      if (open && key.includes('/') && !listings[key]) void list(key);
+      if (open && isAbsolutePath(key) && !listings[key]) void list(key);
     }
   }, [expanded, listings, list]);
 
@@ -127,7 +128,11 @@ export function FilesPanel() {
           if (ok === null) return;
           try {
             const tab = tabs.find((t) => t.kind === 'console' && t.connectionId === connectionId && t.name === name);
-            if (tab) workspace.close(tab.id);
+            // Closing a tab saves its document: that must not bring the file back.
+            if (tab) {
+              workspace.discard(tab.id);
+              workspace.close(tab.id);
+            }
             await backend.deleteConsole(connectionId, name);
             await refreshConsoles();
           } catch (err) {

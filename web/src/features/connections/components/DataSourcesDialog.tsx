@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState, type MouseEvent } from 'react';
 import { IconButton } from '@/shared/ui/IconButton';
 import { Modal } from '@/shared/ui/Modal';
 import { backend, errorMessage, type ConnectionConfig, type DriverKind, type TlsMode } from '@/shared/api';
+import { tlsFor } from '../lib/connectionUrl';
 import { useConnections } from '../model/connections';
 import { useUi, type SourcePrefill } from '@/shared/model/ui';
 import { useWorkspace } from '@/features/workspace';
@@ -15,6 +16,30 @@ interface Draft {
   password: string | null;
   isNew: boolean;
   dirty: boolean;
+  /** Holds something the user typed, that closing would lose. */
+  edited: boolean;
+}
+
+type Field = 'name' | 'host' | 'port';
+
+function invalidField(config: ConnectionConfig): { field: Field; message: string } | null {
+  if (!config.name.trim()) return { field: 'name', message: 'Enter a name' };
+  if (!config.host.trim()) return { field: 'host', message: 'Enter a host' };
+  if (config.port < 1 || config.port > 65535) return { field: 'port', message: 'The port must be between 1 and 65535' };
+  return null;
+}
+
+/** Whether a live session still runs on what `before` said. */
+function sessionIsStale(before: ConnectionConfig, after: ConnectionConfig, password: string | null): boolean {
+  return (
+    password !== null ||
+    before.driver !== after.driver ||
+    before.host !== after.host ||
+    before.port !== after.port ||
+    before.user !== after.user ||
+    before.database !== after.database ||
+    before.tls !== after.tls
+  );
 }
 
 const DEFAULTS: Record<DriverKind, Pick<ConnectionConfig, 'port' | 'user' | 'database'>> = {
@@ -39,6 +64,7 @@ function newDraft(driver: DriverKind): Draft {
     password: '',
     isNew: true,
     dirty: true,
+    edited: false,
   };
 }
 
@@ -63,7 +89,7 @@ function Dialog() {
   const openMenu = useUi((s) => s.openMenu);
 
   const [drafts, setDrafts] = useState<Record<string, Draft>>(() => {
-    const entries = saved.map((config) => [config.id, { config, password: null, isNew: false, dirty: false }]);
+    const entries = saved.map((config) => [config.id, { config, password: null, isNew: false, dirty: false, edited: false }]);
     return Object.fromEntries(entries);
   });
   const [order, setOrder] = useState<string[]>(() => saved.map((c) => c.id));
@@ -78,6 +104,7 @@ function Dialog() {
       const { password, ...config } = prefill;
       draft.config = { ...draft.config, ...config };
       if (password !== undefined) draft.password = password;
+      draft.edited = true;
     }
     setDrafts((d) => ({ ...d, [draft.config.id]: draft }));
     setOrder((o) => [...o, draft.config.id]);
@@ -108,8 +135,22 @@ function Dialog() {
         config: { ...draft.config, ...patch },
         password: password === undefined ? draft.password : password,
         dirty: true,
+        edited: true,
       },
     }));
+  };
+
+  const requestClose = async () => {
+    if (Object.values(drafts).some((d) => d.edited)) {
+      const ok = await useUi.getState().ask({
+        title: 'Discard Changes',
+        message: 'Your changes to the data sources are not saved.',
+        confirmLabel: 'Discard',
+        danger: true,
+      });
+      if (ok === null) return;
+    }
+    close();
   };
 
   const changeDriver = (driver: DriverKind) => {
@@ -118,6 +159,7 @@ function Dialog() {
     const next = DEFAULTS[driver];
     update({
       driver,
+      tls: tlsFor(driver, draft.config.tls),
       port: draft.config.port === old.port ? next.port : draft.config.port,
       user: draft.config.user === old.user ? next.user : draft.config.user,
       database: draft.config.database === old.database ? next.database : draft.config.database,
@@ -143,8 +185,14 @@ function Dialog() {
         danger: true,
       });
       if (ok === null) return;
-      await useConnections.getState().remove(draft.config.id);
+      // Tabs go first: closing them must not write their consoles back after the deletion.
       useWorkspace.getState().forgetConnection(draft.config.id);
+      try {
+        await useConnections.getState().remove(draft.config.id);
+      } catch (e) {
+        setError(errorMessage(e));
+        return;
+      }
     }
     const rest = order.filter((id) => id !== draft.config.id);
     setOrder(rest);
@@ -158,6 +206,11 @@ function Dialog() {
 
   const runTest = async () => {
     if (!draft) return;
+    const invalid = invalidField(draft.config);
+    if (invalid) {
+      setTest({ status: 'error', message: invalid.message });
+      return;
+    }
     setTest({ status: 'running' });
     try {
       const version = await backend.testConnection(draft.config, draft.password || (draft.isNew ? '' : null));
@@ -171,21 +224,50 @@ function Dialog() {
     setSaving(true);
     setError(null);
     const created: string[] = [];
+    const stale: ConnectionConfig[] = [];
+    const noKeychain: string[] = [];
     try {
       for (const id of order) {
         const d = drafts[id];
         if (!d?.dirty) continue;
-        if (!d.config.name.trim() || !d.config.host.trim()) throw new Error('Name and host are required');
+        const invalid = invalidField(d.config);
+        if (invalid) {
+          setSelected(id);
+          throw new Error(invalid.message);
+        }
+        const connections = useConnections.getState();
+        const before = connections.list.find((c) => c.id === id);
         const password = d.password === '' && !d.isNew ? null : d.password;
-        await useConnections.getState().save(d.config, password);
+        const config = await connections.save(d.config, password);
+        if (d.config.savePassword && !config.savePassword) noKeychain.push(config.name);
+        if (before && connections.state[id]?.status === 'connected' && sessionIsStale(before, config, password)) stale.push(config);
         if (d.isNew) created.push(id);
-        setDrafts((all) => ({ ...all, [id]: { ...d, isNew: false, dirty: false, password: null } }));
+        setDrafts((all) => ({ ...all, [id]: { config, isNew: false, dirty: false, edited: false, password: null } }));
       }
     } catch (e) {
       setError(errorMessage(e));
       throw e;
     } finally {
       setSaving(false);
+    }
+    const { ask } = useUi.getState();
+    if (noKeychain.length) {
+      await ask({
+        title: 'Password Not Saved',
+        message: `The system keychain is unavailable, so ${noKeychain.join(', ')} will ask for the password at each connection.`,
+        confirmLabel: 'Close',
+      });
+    }
+    for (const config of stale) {
+      const reconnect = await ask({
+        title: 'Reconnect',
+        message: `${config.name} is connected with its previous settings. Reconnecting cancels its running statements and ends open transactions.`,
+        confirmLabel: 'Reconnect',
+      });
+      if (reconnect === null) continue;
+      const connections = useConnections.getState();
+      await connections.disconnect(config.id);
+      void connections.ensureConnected(config.id);
     }
     return created;
   };
@@ -206,7 +288,8 @@ function Dialog() {
     <Modal
       title="Data Sources"
       width={860}
-      onClose={close}
+      dismissOnBackdrop={false}
+      onClose={() => void requestClose()}
       footer={
         <>
           <div className="footer-left">
@@ -226,7 +309,7 @@ function Dialog() {
             )}
             {error && <span className="test-error">{error}</span>}
           </div>
-          <button type="button" className="btn" onClick={close}>
+          <button type="button" className="btn" onClick={() => void requestClose()}>
             Cancel
           </button>
           <button type="button" className="btn" disabled={!dirty || saving} onClick={() => void apply().catch(() => {})}>
@@ -296,12 +379,14 @@ function Dialog() {
               <label className="field port">
                 <span>Port</span>
                 <input
-                  value={draft.config.port}
+                  value={draft.config.port || ''}
+                  aria-invalid={invalidField(draft.config)?.field === 'port'}
                   inputMode="numeric"
                   onChange={(e) => update({ port: Number(e.target.value.replace(/\D/g, '')) || 0 })}
                 />
               </label>
             </div>
+            {invalidField(draft.config)?.field === 'port' && <p className="field-error">{invalidField(draft.config)?.message}</p>}
             <label className="field">
               <span>User</span>
               <input value={draft.config.user} onChange={(e) => update({ user: e.target.value })} spellCheck={false} />
@@ -331,7 +416,7 @@ function Dialog() {
             </label>
             <label className="field">
               <span>{draft.config.driver === 'postgres' ? 'SSL mode' : 'Protocol'}</span>
-              <select value={draft.config.tls} onChange={(e) => update({ tls: e.target.value as TlsMode })}>
+              <select value={tlsFor(draft.config.driver, draft.config.tls)} onChange={(e) => update({ tls: e.target.value as TlsMode })}>
                 {draft.config.driver === 'postgres' ? (
                   <>
                     <option value="disable">disable</option>

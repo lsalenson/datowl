@@ -7,19 +7,21 @@
 
 use std::{
     fs, io,
-    path::PathBuf,
-    sync::RwLock,
+    path::{Path, PathBuf},
+    sync::{Mutex, RwLock},
     time::{SystemTime, UNIX_EPOCH},
 };
 
 use datowl_domain::ProjectInfo;
 use uuid::Uuid;
 
-use crate::{write_atomic, Result, Store, StoreError};
+use crate::{read_or_set_aside, write_atomic, Result, Store, StoreError};
 
 pub struct Projects {
     root: PathBuf,
     list: RwLock<Vec<ProjectInfo>>,
+    /// Unreadable files moved aside, not yet reported to the user.
+    notices: Mutex<Vec<String>>,
 }
 
 impl Projects {
@@ -28,12 +30,11 @@ impl Projects {
     pub fn open(root: impl Into<PathBuf>) -> Result<Self> {
         let root = root.into();
         fs::create_dir_all(&root)?;
-        let list: Vec<ProjectInfo> = match fs::read(root.join("projects.json")) {
-            Ok(bytes) => serde_json::from_slice(&bytes)?,
-            Err(e) if e.kind() == io::ErrorKind::NotFound => Vec::new(),
-            Err(e) => return Err(e.into()),
-        };
-        let projects = Self { root, list: RwLock::new(list) };
+        let (list, recovered): (Vec<ProjectInfo>, _) = read_or_set_aside(&root.join("projects.json"))?;
+        let projects = Self { root, list: RwLock::new(list), notices: Mutex::default() };
+        if let Some(aside) = recovered {
+            projects.notice("The project list", &aside);
+        }
         if projects.list().is_empty() {
             let first = projects.create("datowl", None)?;
             projects.adopt_legacy(first.id)?;
@@ -68,7 +69,21 @@ impl Projects {
                 p.last_opened = now();
             }
         })?;
-        Store::open(self.dir(id))
+        let store = Store::open(self.dir(id))?;
+        if let Some(aside) = store.recovered() {
+            self.notice("The data sources of this project", aside);
+        }
+        Ok(store)
+    }
+
+    fn notice(&self, what: &str, aside: &Path) {
+        let text = format!("{what} could not be read and started empty. The damaged file was kept: {}", aside.display());
+        self.notices.lock().expect("notices lock poisoned").push(text);
+    }
+
+    /// What went wrong while loading since the last call, for the user to read.
+    pub fn take_notices(&self) -> Vec<String> {
+        std::mem::take(&mut *self.notices.lock().expect("notices lock poisoned"))
     }
 
     pub fn rename(&self, id: Uuid, name: &str) -> Result<ProjectInfo> {
@@ -117,7 +132,7 @@ impl Projects {
     }
 }
 
-fn now() -> u64 {
+pub(crate) fn now() -> u64 {
     SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_millis() as u64)
 }
 
@@ -139,6 +154,18 @@ mod tests {
 
         // Reopening keeps the same project and does not create another one.
         assert_eq!(Projects::open(dir.path()).unwrap().list(), [first]);
+    }
+
+    #[test]
+    fn corrupted_registry_starts_over_and_reports_it() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(dir.path().join("projects.json"), "garbage").unwrap();
+
+        let projects = Projects::open(dir.path()).unwrap();
+        assert_eq!(projects.list().len(), 1);
+        let [notice] = projects.take_notices().try_into().unwrap();
+        assert!(notice.contains(".corrupt-"), "{notice}");
+        assert!(projects.take_notices().is_empty());
     }
 
     #[test]

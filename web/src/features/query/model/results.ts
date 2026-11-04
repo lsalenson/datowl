@@ -25,6 +25,8 @@ export interface TabResults {
   activeSetId: string | null;
   runId: number | null;
   running: boolean;
+  /** A BEGIN ran on this tab's session with no COMMIT or ROLLBACK since. */
+  transactionOpen: boolean;
 }
 
 interface ResultsStore {
@@ -32,6 +34,7 @@ interface ResultsStore {
   startRun(tabId: string): void;
   setRunId(tabId: string, runId: number | null): void;
   endRun(tabId: string): void;
+  setTransactionOpen(tabId: string, open: boolean): void;
   addSet(tabId: string, set: ResultSet): void;
   updateSet(tabId: string, setId: string, patch: Partial<ResultSet>): void;
   activateSet(tabId: string, setId: string | null): void;
@@ -39,7 +42,7 @@ interface ResultsStore {
   dropTab(tabId: string): void;
 }
 
-const EMPTY: TabResults = { sets: [], activeSetId: null, runId: null, running: false };
+const EMPTY: TabResults = { sets: [], activeSetId: null, runId: null, running: false, transactionOpen: false };
 
 export const useResults = create<ResultsStore>((set) => {
   const patchTab = (tabId: string, patch: (t: TabResults) => Partial<TabResults>) =>
@@ -53,6 +56,7 @@ export const useResults = create<ResultsStore>((set) => {
     startRun: (tabId) => patchTab(tabId, () => ({ sets: [], activeSetId: null, running: true, runId: null })),
     setRunId: (tabId, runId) => patchTab(tabId, () => ({ runId })),
     endRun: (tabId) => patchTab(tabId, () => ({ running: false, runId: null })),
+    setTransactionOpen: (tabId, transactionOpen) => patchTab(tabId, () => ({ transactionOpen })),
     addSet: (tabId, result) => patchTab(tabId, (t) => ({ sets: [...t.sets, result], activeSetId: result.id })),
     updateSet: (tabId, setId, patch) =>
       patchTab(tabId, (t) => ({ sets: t.sets.map((r) => (r.id === setId ? { ...r, ...patch } : r)) })),

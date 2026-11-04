@@ -16,6 +16,13 @@ const SCHEMES: Record<string, DriverKind> = {
 // Datowl talks to ClickHouse over HTTP: map the native protocol ports to theirs.
 const CLICKHOUSE_NATIVE_PORTS: Record<number, number> = { 9000: 8123, 9440: 8443 };
 
+/** The closest mode the driver offers: ClickHouse has neither `prefer` nor `verify-full`. */
+export function tlsFor(driver: DriverKind, tls: TlsMode): TlsMode {
+  if (driver === 'postgres') return tls;
+  if (tls === 'prefer') return 'disable';
+  return tls === 'verify-full' ? 'require' : tls;
+}
+
 export function parseConnectionUrl(text: string): SourcePrefill {
   const raw = text.trim().replace(/^jdbc:/i, '');
   const scheme = /^([a-z][a-z0-9+.-]*):\/\//i.exec(raw)?.[1].toLowerCase();

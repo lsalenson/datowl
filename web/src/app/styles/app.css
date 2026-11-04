@@ -1753,34 +1753,6 @@ html.glass .topbar {
 }
 
 /* DataGrip's pin column: a hairline, then the pin; pinned tool windows show in accent. */
-.menu-pin {
-  width: 26px;
-  height: 18px;
-  flex: none;
-  display: grid;
-  place-items: center;
-  margin-left: 4px;
-  border: 0;
-  border-left: 1px solid var(--line-strong);
-  background: transparent;
-  color: var(--text-faint);
-  opacity: 0;
-}
-
-.menu-row:hover .menu-pin:not(:disabled),
-.menu-pin.pinned {
-  opacity: 1;
-}
-
-.menu-pin.pinned,
-.menu-pin:hover:not(:disabled) {
-  color: var(--orchid);
-}
-
-.menu-pin.pinned svg {
-  fill: currentColor;
-}
-
 .submenu {
   position: absolute;
   left: calc(100% + 4px);
@@ -2539,4 +2511,119 @@ html.glass .topbar {
 .toast-close:hover {
   background: var(--hover);
   color: var(--text);
+}
+
+/* Keyboard focus. Monaco and the grid draw their own. */
+button:focus-visible,
+a:focus-visible,
+select:focus-visible,
+input[type='checkbox']:focus-visible,
+[tabindex='0']:not(.monaco-editor *, .grid-host *):focus-visible {
+  outline: 2px solid var(--orchid);
+  outline-offset: 1px;
+}
+
+.tree:focus-visible {
+  outline: 2px solid var(--orchid-line);
+  outline-offset: -2px;
+}
+
+.field-error {
+  margin: 0;
+  color: var(--danger);
+  font-size: 12px;
+  white-space: pre-wrap;
+  user-select: text;
+}
+
+.ds-form > .field-error {
+  padding-left: 100px;
+}
+
+.editor-notice {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: none;
+  font-family: inherit;
+}
+
+.editor-notice span {
+  flex: 1;
+}
+
+.tree-retry {
+  flex: none;
+  margin-left: 8px;
+}
+
+/* Delayed: an autosave a moment after typing must not make the dot blink. */
+.save-dot {
+  width: 7px;
+  height: 7px;
+  flex: none;
+  border-radius: 50%;
+}
+
+.save-dot.dirty {
+  background: var(--text-dim);
+  animation: save-dot-appear 0.2s 1s both;
+}
+
+.save-dot.error {
+  background: var(--danger);
+}
+
+@keyframes save-dot-appear {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.tx-open {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-left: 8px;
+  color: var(--warn);
+  font-size: 12px;
+}
+
+.crash {
+  height: 100vh;
+  padding: 48px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  background: #16141a;
+  color: var(--text);
+}
+
+.crash h1 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.crash p {
+  margin: 0;
+}
+
+.crash pre {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 12px;
+  border-radius: var(--r-tab);
+  background: rgba(255, 255, 255, 0.05);
+  font: 12px/1.5 var(--font-mono);
+  user-select: text;
+}
+
+.crash-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
 }

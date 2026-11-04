@@ -26,6 +26,10 @@ Chaque fichier de mise à jour a son `.sig`, et `latest.json` les référence to
 L'app interroge `https://github.com/lsalenson/datowl/releases/latest/download/latest.json`
 (voir `plugins.updater` dans `apps/desktop/src-tauri/tauri.conf.json`).
 
+Le workflow lance d'abord la CI ([`.github/workflows/ci.yml`](../.github/workflows/ci.yml)) : un test
+en échec bloque la release. La publication passe par l'environnement GitHub `release` : y ajouter des
+relecteurs obligatoires permet d'essayer le draft avant qu'il n'atteigne les apps installées.
+
 ## Essayer les installeurs sans publier
 
 ```bash

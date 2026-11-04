@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 
-import { backend, errorMessage, type ConnectionConfig, type SchemaSnapshot } from '@/shared/api';
+import { backend, errorMessage, isConnectionLost, type ConnectionConfig, type SchemaSnapshot } from '@/shared/api';
 import { log } from '@/shared/model/output';
 import { useUi } from '@/shared/model/ui';
 
@@ -25,6 +25,8 @@ interface ConnectionsStore {
   /** Connects if needed. Resolves `false` when the connection could not be opened. */
   ensureConnected(id: string): Promise<boolean>;
   disconnect(id: string): Promise<void>;
+  /** The session died: forget it, so the next action reconnects. */
+  markLost(id: string, message: string): void;
   refreshSchema(id: string): Promise<void>;
 }
 
@@ -68,30 +70,46 @@ export const useConnections = create<ConnectionsStore>((set, get) => ({
     const attempt = (async () => {
       const config = get().list.find((c) => c.id === id);
       if (!config) return false;
-      let password: string | null = null;
-      if (!config.savePassword) {
-        const answer = await useUi.getState().askPassword(config);
-        if (answer === null) return false;
-        password = answer.password;
-        if (answer.remember) {
-          // Into the keychain: the next connections read it from there.
-          await get()
-            .save({ ...config, savePassword: true }, password)
-            .catch((e) => log('error', config.name, `Could not save the password: ${errorMessage(e)}`));
+      // A data source without a saved password asks again until it connects or the user gives up.
+      let refused: string | undefined;
+      for (;;) {
+        let password: string | null = null;
+        let remember = false;
+        if (!config.savePassword) {
+          const answer = await useUi.getState().askPassword(config, refused);
+          if (answer === null) {
+            setState(id, { status: 'idle' });
+            return false;
+          }
+          ({ password, remember } = answer);
         }
-      }
-      setState(id, { status: 'connecting' });
-      try {
-        const { serverVersion } = await backend.connect(id, password);
-        setState(id, { status: 'connected', serverVersion });
-        log('success', config.name, `Connected to ${serverVersion}`);
-        void get().refreshSchema(id);
-        return true;
-      } catch (e) {
-        const error = errorMessage(e);
-        setState(id, { status: 'error', error });
-        log('error', config.name, `Connection failed: ${error}`);
-        return false;
+        setState(id, { status: 'connecting' });
+        try {
+          const { serverVersion } = await backend.connect(id, password);
+          setState(id, { status: 'connected', serverVersion });
+          log('success', config.name, `Connected to ${serverVersion}`);
+          // Only now: a mistyped password must not end up in the keychain.
+          if (remember) {
+            const saved = await get()
+              .save({ ...config, savePassword: true }, password)
+              .catch((e) => {
+                log('error', config.name, `Could not save the password: ${errorMessage(e)}`);
+                return null;
+              });
+            if (saved && !saved.savePassword) log('error', config.name, 'The system keychain refused the password: it will be asked again.');
+          }
+          void get().refreshSchema(id);
+          return true;
+        } catch (e) {
+          const error = errorMessage(e);
+          setState(id, { status: 'error', error });
+          log('error', config.name, `Connection failed: ${error}`);
+          if (config.savePassword) {
+            showOutput();
+            return false;
+          }
+          refused = error;
+        }
       }
     })().finally(() => pending.delete(id));
 
@@ -107,15 +125,32 @@ export const useConnections = create<ConnectionsStore>((set, get) => ({
     log('info', name, 'Disconnected');
   },
 
+  markLost: (id, message) => {
+    if (get().state[id]?.status !== 'connected') return;
+    setState(id, { status: 'idle' });
+    set((s) => ({ consoleSchemas: { ...s.consoleSchemas, [id]: {} } }));
+    const name = get().list.find((c) => c.id === id)?.name ?? id;
+    log('error', name, `Connection lost: ${message}. The next action reconnects; open transactions and SET values are gone.`);
+    showOutput();
+  },
+
   refreshSchema: async (id) => {
     try {
       const snapshot = await backend.completionSchema(id);
       set((s) => ({ schema: { ...s.schema, [id]: snapshot } }));
     } catch (e) {
-      log('error', 'introspection', errorMessage(e));
+      if (isConnectionLost(e)) get().markLost(id, errorMessage(e));
+      else log('error', 'introspection', errorMessage(e));
     }
   },
 }));
+
+/** Connection problems must be seen even with the Services tool window closed. */
+function showOutput() {
+  const ui = useUi.getState();
+  ui.setServicesVisible(true);
+  ui.setBottomTab('output');
+}
 
 function setState(id: string, state: ConnectionState) {
   useConnections.setState((s) => ({ state: { ...s.state, [id]: state } }));

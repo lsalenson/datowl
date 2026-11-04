@@ -21,18 +21,19 @@ function Ask() {
   }, []);
 
   const preview = typeof request.preview === 'function' ? request.preview(value) : request.preview;
-  const valid = !request.input || value.trim() !== '';
+  const valid = !request.input || (request.input.matches ? value.trim() === request.input.matches : value.trim() !== '');
   const submit = () => valid && answer(request.input ? value.trim() : '');
 
   return (
     <Modal
       title={request.title}
       width={460}
+      dismissOnBackdrop={!request.input}
       onClose={() => answer(null)}
       footer={
         <>
           <span className="footer-left" />
-          <button type="button" className="btn" onClick={() => answer(null)}>
+          <button type="button" className="btn" onClick={() => answer(null)} autoFocus={!request.input && request.danger}>
             Cancel
           </button>
           <button
@@ -40,7 +41,7 @@ function Ask() {
             className={`btn primary${request.danger ? ' danger' : ''}`}
             disabled={!valid}
             onClick={submit}
-            autoFocus={!request.input}
+            autoFocus={!request.input && !request.danger}
           >
             {request.confirmLabel ?? 'OK'}
           </button>
@@ -60,6 +61,7 @@ function Ask() {
             <span>{request.input.label}</span>
             <input
               ref={input}
+              type={request.input.secret ? 'password' : 'text'}
               value={value}
               placeholder={request.input.placeholder}
               onChange={(e) => setValue(e.target.value)}

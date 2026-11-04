@@ -9,6 +9,9 @@ pub enum Error {
     },
     #[error("{0}")]
     Connection(String),
+    /// The session died under a running request (server restart, network failure).
+    #[error("{0}")]
+    ConnectionLost(String),
     #[error("Not connected")]
     NotConnected,
     #[error("The result set is closed")]
@@ -33,6 +36,11 @@ impl Error {
             Self::Database { position, .. } => *position,
             _ => None,
         }
+    }
+
+    /// The session cannot serve anything more: it must be reopened.
+    pub fn is_connection_lost(&self) -> bool {
+        matches!(self, Self::ConnectionLost(_) | Self::NotConnected)
     }
 
     pub fn database(message: impl Into<String>) -> Self {

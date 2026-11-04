@@ -1,8 +1,10 @@
-import { Check, ChevronDown, ChevronsRight, Ellipsis, FolderOpen, GitBranch, Plus, Search, Settings, Sparkles } from 'lucide-react';
+import { Check, ChevronDown, ChevronsRight, FolderOpen, GitBranch, Plus, Search, Settings } from 'lucide-react';
 import type { MouseEvent } from 'react';
 
 import { IconButton } from '@/shared/ui/IconButton';
-import { TOOL_WINDOWS, toggleToolWindow, toolWindow } from './toolWindows';
+import { baseName } from '@/shared/lib/path';
+import { formatShortcut } from '@/shared/lib/shortcuts';
+import { TOOL_WINDOWS, toggleToolWindow } from './toolWindows';
 import { editorRegistry } from '@/features/editor';
 import { backend, errorMessage, isTauri, type Project } from '@/shared/api';
 import { useConnections } from '@/features/connections';
@@ -36,9 +38,8 @@ export function MainToolbar() {
   const tab = useWorkspace((s) => s.tabs.find((t) => t.id === s.activeId));
   const running = useResults(tabResults(tab?.id ?? null)).running;
   const project = useProjects((s) => s.current);
-  // Re-render when a pinned tool window opens or closes.
+  // Re-render when a tool window opens or closes.
   useUi((s) => `${s.explorerVisible}${s.servicesVisible}${s.filesVisible}`);
-  const pinned = useUi((s) => s.pinnedTools);
   // Actions are read at call time: subscribing to the whole store would re-render
   // the toolbar on every caret move.
   const ui = useUi.getState();
@@ -57,7 +58,7 @@ export function MainToolbar() {
     const projects = useProjects.getState();
     const existing = projects.list.find((p) => p.path === path);
     if (existing) return projects.open(existing.id).catch(fail);
-    const name = path.replace(/\/+$/, '').split('/').pop() || path;
+    const name = baseName(path);
     await projects.create(name, path).catch(fail);
   };
 
@@ -145,28 +146,6 @@ export function MainToolbar() {
     ]);
   };
 
-  // "More tool windows", as in DataGrip: every tool window, with a pin column that
-  // chooses which ones sit in the toolbar. Pinning keeps the menu open.
-  const moreMenu = (e: MouseEvent) => {
-    const r = e.currentTarget.getBoundingClientRect();
-    const items = () =>
-      TOOL_WINDOWS.map((tool) => ({
-        label: tool.label,
-        icon: <tool.icon size={14} strokeWidth={1.75} />,
-        shortcut: tool.shortcut,
-        disabled: !tool.setVisible,
-        pinned: useUi.getState().pinnedTools.includes(tool.id),
-        onPin: tool.setVisible
-          ? () => {
-              useUi.getState().togglePinned(tool.id);
-              ui.openMenu(r.left, r.bottom + 4, items());
-            }
-          : undefined,
-        onSelect: () => toggleToolWindow(tool.id),
-      }));
-    ui.openMenu(r.left, r.bottom + 4, items());
-  };
-
   return (
     <header className="topbar" data-tauri-drag-region>
       <button type="button" className="widget project" onClick={projectMenu} title={project?.path ?? undefined}>
@@ -184,7 +163,7 @@ export function MainToolbar() {
       <button
         type="button"
         className="run-square"
-        title="Execute (⌘↵)"
+        title={`Execute (${formatShortcut('⌘↵')})`}
         aria-label="Execute"
         disabled={!(tab?.kind === 'console' || (tab?.kind === 'file' && tab.connectionId && /\.sql$/i.test(tab.path))) || running}
         onClick={() => tab && editorRegistry.get(tab.id)?.run()}
@@ -193,25 +172,20 @@ export function MainToolbar() {
       </button>
 
       <div className="topbar-center" data-tauri-drag-region>
-        {pinned.map((id) => {
-          const tool = toolWindow(id);
-          return (
-            <IconButton
-              key={id}
-              icon={tool.icon}
-              label={tool.label}
-              shortcut={tool.shortcut}
-              active={tool.visible?.()}
-              size={16}
-              onClick={() => toggleToolWindow(id)}
-            />
-          );
-        })}
-        <IconButton icon={Ellipsis} label="More Tool Windows" size={16} onClick={moreMenu} />
+        {TOOL_WINDOWS.map((tool) => (
+          <IconButton
+            key={tool.id}
+            icon={tool.icon}
+            label={tool.label}
+            shortcut={tool.shortcut}
+            active={tool.visible()}
+            size={16}
+            onClick={() => toggleToolWindow(tool.id)}
+          />
+        ))}
       </div>
 
       <div className="topbar-right">
-        <IconButton icon={Sparkles} label="AI Assistant (not available yet)" size={16} disabled />
         <IconButton icon={Search} label="Search Everywhere" shortcut="⌘K" size={16} onClick={() => ui.setPaletteOpen(true)} />
         <IconButton icon={Settings} label="Settings" size={16} onClick={settingsMenu} />
       </div>

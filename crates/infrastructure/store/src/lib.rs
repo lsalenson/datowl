@@ -24,6 +24,7 @@ use std::{
     sync::RwLock,
 };
 
+use serde::de::DeserializeOwned;
 use uuid::Uuid;
 use datowl_domain::ConnectionConfig;
 
@@ -35,9 +36,9 @@ const LEGACY_KEYCHAIN_SERVICE: &str = "dev.datavio.app";
 pub enum StoreError {
     #[error("I/O error: {0}")]
     Io(#[from] io::Error),
-    #[error("Corrupted data sources file: {0}")]
+    #[error("Corrupted file: {0}")]
     Json(#[from] serde_json::Error),
-    #[error("Keychain error: {0}")]
+    #[error("The system keychain is unavailable ({0}). Turn off \"Save password\" on this data source to type it at each connection.")]
     Keychain(#[from] keyring::Error),
     #[error("Unknown data source {0}")]
     NotFound(Uuid),
@@ -50,18 +51,20 @@ pub type Result<T> = std::result::Result<T, StoreError>;
 pub struct Store {
     dir: PathBuf,
     connections: RwLock<Vec<ConnectionConfig>>,
+    /// Where an unreadable `connections.json` was moved aside when opening.
+    recovered: Option<PathBuf>,
 }
 
 impl Store {
     pub fn open(dir: impl Into<PathBuf>) -> Result<Self> {
         let dir = dir.into();
         fs::create_dir_all(&dir)?;
-        let connections = match fs::read(dir.join("connections.json")) {
-            Ok(bytes) => serde_json::from_slice(&bytes)?,
-            Err(e) if e.kind() == io::ErrorKind::NotFound => Vec::new(),
-            Err(e) => return Err(e.into()),
-        };
-        Ok(Self { dir, connections: RwLock::new(connections) })
+        let (connections, recovered) = read_or_set_aside(&dir.join("connections.json"))?;
+        Ok(Self { dir, connections: RwLock::new(connections), recovered })
+    }
+
+    pub fn recovered(&self) -> Option<&Path> {
+        self.recovered.as_deref()
     }
 
     pub fn connections(&self) -> Vec<ConnectionConfig> {
@@ -80,10 +83,19 @@ impl Store {
 
     /// Inserts or replaces a data source. `password: None` keeps the stored one.
     pub fn save_connection(&self, config: ConnectionConfig, password: Option<&str>) -> Result<ConnectionConfig> {
+        // The configuration is worth saving even when the keychain refuses the secret: the
+        // data source then asks for its password at each connection, which the caller sees
+        // in the `save_password` it gets back.
+        let mut config = config;
         if !config.save_password {
-            delete_password(config.id)?;
+            if let Err(e) = delete_password(config.id) {
+                tracing::warn!("could not delete a keychain entry: {e}");
+            }
         } else if let Some(password) = password {
-            entry(config.id)?.set_password(password)?;
+            if let Err(e) = entry(config.id).and_then(|entry| Ok(entry.set_password(password)?)) {
+                tracing::warn!("could not save to the keychain: {e}");
+                config.save_password = false;
+            }
         }
 
         let mut connections = self.connections.write().expect("store lock poisoned");
@@ -188,6 +200,27 @@ fn delete_password(id: Uuid) -> Result<()> {
     Ok(())
 }
 
+/// A JSON file, or its default when absent. An unreadable one is moved aside rather than
+/// stopping the app or being overwritten by the next save.
+fn read_or_set_aside<T: DeserializeOwned + Default>(path: &Path) -> Result<(T, Option<PathBuf>)> {
+    let bytes = match fs::read(path) {
+        Ok(bytes) => bytes,
+        Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok((T::default(), None)),
+        Err(e) => return Err(e.into()),
+    };
+    match serde_json::from_slice(&bytes) {
+        Ok(value) => Ok((value, None)),
+        Err(e) => {
+            tracing::warn!("{}: {e}", path.display());
+            let mut aside = path.as_os_str().to_owned();
+            aside.push(format!(".corrupt-{}", projects::now()));
+            let aside = PathBuf::from(aside);
+            fs::rename(path, &aside)?;
+            Ok((T::default(), Some(aside)))
+        }
+    }
+}
+
 /// Writes through a temporary file so a crash never leaves a half-written file.
 fn write_atomic(path: &Path, bytes: &[u8]) -> Result<()> {
     let tmp = path.with_extension("tmp");
@@ -231,6 +264,23 @@ mod tests {
         let reopened = Store::open(dir.path()).unwrap();
         let names: Vec<_> = reopened.connections().into_iter().map(|c| c.name).collect();
         assert_eq!(names, ["renamed", "b"]);
+    }
+
+    #[test]
+    fn corrupted_connections_are_set_aside() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(dir.path().join("connections.json"), "{ not json").unwrap();
+
+        let store = Store::open(dir.path()).unwrap();
+        assert!(store.connections().is_empty());
+        let aside = store.recovered().unwrap().to_owned();
+        assert_eq!(fs::read_to_string(&aside).unwrap(), "{ not json");
+        assert!(!dir.path().join("connections.json").exists());
+
+        // Saving afterwards does not touch the copy, and the next open is clean.
+        store.save_connection(config("a"), None).unwrap();
+        assert!(aside.exists());
+        assert!(Store::open(dir.path()).unwrap().recovered().is_none());
     }
 
     #[test]

@@ -393,7 +393,7 @@ fn server_error(text: &str) -> Error {
 }
 
 fn transport_error(e: reqwest::Error) -> Error {
-    Error::Connection(e.to_string())
+    Error::ConnectionLost(e.to_string())
 }
 
 pub(crate) fn quote_ident(name: &str) -> String {

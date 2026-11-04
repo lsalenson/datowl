@@ -1,4 +1,4 @@
-use std::fmt::Write;
+use std::{error::Error as _, fmt::Write, io};
 
 use tokio_postgres::error::{ErrorPosition, SqlState};
 use datowl_domain::Error;
@@ -8,12 +8,17 @@ use datowl_domain::Error;
 /// so the reported position points into the text the user actually wrote.
 pub(crate) fn query_error(e: tokio_postgres::Error, shift: u32) -> Error {
     let Some(db) = e.as_db_error() else {
-        return if e.is_closed() {
-            Error::Connection("The connection to the server was closed".into())
+        return if e.is_closed() || e.source().is_some_and(|s| s.is::<io::Error>()) {
+            Error::ConnectionLost("The connection to the server was lost".into())
         } else {
             Error::Other(e.to_string())
         };
     };
+
+    // The server sends these right before hanging up.
+    if [SqlState::ADMIN_SHUTDOWN, SqlState::CRASH_SHUTDOWN, SqlState::CANNOT_CONNECT_NOW].contains(db.code()) {
+        return Error::ConnectionLost(format!("[{}] {}", db.code().code(), db.message()));
+    }
 
     let mut message = format!("[{}] {}: {}", db.code().code(), db.severity(), db.message());
     for (label, value) in [("Detail", db.detail()), ("Hint", db.hint()), ("Where", db.where_())] {

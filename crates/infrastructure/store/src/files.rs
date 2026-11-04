@@ -31,6 +31,18 @@ fn io(path: &Path, e: std::io::Error) -> Error {
     Error::Storage(format!("{}: {e}", path.display()))
 }
 
+/// Through a temporary file, so a crash never leaves the user's file half-written.
+fn replace(file: &Path, text: &str) -> Result<()> {
+    let tmp = file.with_extension("datowl-tmp");
+    let result = fs::File::create(&tmp)
+        .and_then(|mut f| f.write_all(text.as_bytes()).and_then(|_| f.sync_all()))
+        .and_then(|_| fs::rename(&tmp, file));
+    if result.is_err() {
+        let _ = fs::remove_file(&tmp);
+    }
+    result.map_err(|e| io(file, e))
+}
+
 impl ProjectFiles for LocalFiles {
     fn list_dir(&self, root: &Path, path: &Path) -> Result<Vec<FileEntry>> {
         let dir = inside(root, path)?;
@@ -66,16 +78,11 @@ impl ProjectFiles for LocalFiles {
     }
 
     fn write_file(&self, root: &Path, path: &Path, text: &str) -> Result<()> {
-        let file = inside(root, path)?;
-        // Through a temporary file, so a crash never leaves the user's file half-written.
-        let tmp = file.with_extension("datowl-tmp");
-        let result = fs::File::create(&tmp)
-            .and_then(|mut f| f.write_all(text.as_bytes()).and_then(|_| f.sync_all()))
-            .and_then(|_| fs::rename(&tmp, &file));
-        if result.is_err() {
-            let _ = fs::remove_file(&tmp);
-        }
-        result.map_err(|e| io(&file, e))
+        replace(&inside(root, path)?, text)
+    }
+
+    fn export_file(&self, path: &Path, text: &str) -> Result<()> {
+        replace(path, text)
     }
 
     fn git_branch(&self, path: &Path) -> Option<String> {

@@ -7,6 +7,8 @@ import {
   FileCode2,
   Folder,
   LoaderCircle,
+  Maximize2,
+  Minimize2,
   Minus,
   Plus,
   Square,
@@ -20,6 +22,7 @@ import {
 import { useEffect, useRef, useState, type MouseEvent } from 'react';
 
 import { IconButton } from '@/shared/ui/IconButton';
+import { formatShortcut } from '@/shared/lib/shortcuts';
 import { useConnections } from '@/features/connections';
 import { useOutput, type LogEntry } from '@/shared/model/output';
 import { tabResults, useResults } from '../model/results';
@@ -33,21 +36,30 @@ import { ResultView } from './ResultView';
  *  data editor), the output and result sets of the selected one on the right. */
 export function ServicesPanel() {
   const tab = useWorkspace((s) => s.tabs.find((t) => t.id === s.activeId));
-  const consoleTab = tab?.kind === 'console' ? tab : undefined;
-  const results = useResults(tabResults(consoleTab?.id ?? null));
+  // Consoles and .sql files show their results here; tables have their own grid.
+  const documentTab = tab?.kind === 'console' || tab?.kind === 'file' ? tab : undefined;
+  const results = useResults(tabResults(documentTab?.id ?? null));
   const running = useResults(tabResults(tab?.id ?? null)).running;
   const bottomTab = useUi((s) => s.bottomTab);
   const setBottomTab = useUi((s) => s.setBottomTab);
   const hide = useUi((s) => s.setServicesVisible);
+  const maximized = useUi((s) => s.servicesMaximized);
+  const setMaximized = useUi((s) => s.setServicesMaximized);
 
   const active = results.sets.find((s) => s.id === results.activeSetId);
-  const showResults = bottomTab === 'results' && consoleTab && active;
+  const showResults = bottomTab === 'results' && documentTab && active;
 
   return (
     <section className="card services">
       <header className="card-header">
         <span className="card-title">Services</span>
         <div className="card-actions">
+          <IconButton
+            icon={maximized ? Minimize2 : Maximize2}
+            label={maximized ? 'Restore Size' : 'Maximize'}
+            size={14}
+            onClick={() => setMaximized(!maximized)}
+          />
           <IconButton icon={Minus} label="Hide" size={14} onClick={() => hide(false)} />
         </div>
       </header>
@@ -57,7 +69,7 @@ export function ServicesPanel() {
         </div>
         <SessionsTree />
         <div className="services-main">
-          {consoleTab && (
+          {documentTab && (
             <nav className="tool-tabs">
               <button type="button" className={`tool-tab${!showResults ? ' active' : ''}`} onClick={() => setBottomTab('output')}>
                 <SquareTerminal size={13} /> Output
@@ -68,7 +80,7 @@ export function ServicesPanel() {
                     type="button"
                     className="tool-tab-label"
                     onClick={() => {
-                      useResults.getState().activateSet(consoleTab.id, set.id);
+                      useResults.getState().activateSet(documentTab.id, set.id);
                       setBottomTab('results');
                     }}
                     title={set.sql}
@@ -79,7 +91,7 @@ export function ServicesPanel() {
                     type="button"
                     className="tool-tab-close"
                     aria-label="Close result"
-                    onClick={() => useResults.getState().closeSet(consoleTab.id, set.id)}
+                    onClick={() => useResults.getState().closeSet(documentTab.id, set.id)}
                   >
                     <X size={11} />
                   </button>
@@ -88,9 +100,9 @@ export function ServicesPanel() {
             </nav>
           )}
           {showResults ? (
-            <ResultView key={active.id} tabId={consoleTab.id} connectionId={consoleTab.connectionId} set={active} />
+            <ResultView key={active.id} tabId={documentTab.id} connectionId={documentTab.connectionId} set={active} />
           ) : (
-            <OutputView placeholder={tab?.kind === 'table' ? 'Data editor output' : 'Run a statement with ⌘↵ to see its output'} />
+            <OutputView placeholder={tab?.kind === 'table' ? 'Data editor output' : `Run a statement with ${formatShortcut('⌘↵')} to see its output`} />
           )}
         </div>
       </div>

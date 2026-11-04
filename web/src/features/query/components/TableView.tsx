@@ -5,6 +5,8 @@ import { qualifiedName, quoteIdent } from '@/shared/lib/sql';
 import { useConnections } from '@/features/connections';
 import { tabResults, useResults } from '../model/results';
 import { useWorkspace, type EditorTab } from '@/features/workspace';
+import { formatShortcut } from '@/shared/lib/shortcuts';
+import { isModalOpen } from '@/shared/model/ui';
 import type { SortState } from './ResultGrid';
 import { DataToolbar, ResultView } from './ResultView';
 import { runSql } from '../model/runner';
@@ -39,7 +41,7 @@ export function TableView({ tab, active }: { tab: TableTab; active: boolean }) {
   useEffect(() => {
     if (!active) return;
     const onKey = (e: globalThis.KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === 'r') {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'r' && !isModalOpen()) {
         e.preventDefault();
         loadRef.current();
       }
@@ -111,7 +113,7 @@ export function TableView({ tab, active }: { tab: TableTab; active: boolean }) {
         <button type="button" className="link-btn" onClick={() => load()} disabled={results.running}>
           {results.running ? 'Loading…' : 'Load Data'}
         </button>
-        <kbd>⌘R</kbd>
+        <kbd>{formatShortcut('⌘R')}</kbd>
       </div>
     </div>
   );

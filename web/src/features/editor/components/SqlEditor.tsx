@@ -1,10 +1,10 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import { backend, errorMessage, type Dialect, type StatementRange } from '@/shared/api';
 import { log } from '@/shared/model/output';
 import { useConnections } from '@/features/connections';
 import { useUi } from '@/shared/model/ui';
-import type { EditorTab } from '@/features/workspace';
+import { useWorkspace, type EditorTab } from '@/features/workspace';
 import { runSql } from '@/features/query';
 import { bindModel } from '../lib/completion';
 import { monaco } from '../lib/monaco';
@@ -31,6 +31,11 @@ function documentOf(tab: DocumentTab) {
   };
 }
 type Model = monaco.editor.ITextModel;
+
+// Writes of one document go out in order, and reading it waits for them: closing a tab and
+// reopening it right away must not read the file from before the last save.
+const writes = new Map<string, Promise<unknown>>();
+const lastWrite = (key: string) => writes.get(key) ?? Promise.resolve();
 
 export const EDITOR_OPTIONS: monaco.editor.IStandaloneEditorConstructionOptions = {
   theme: 'datowl-dark',
@@ -99,44 +104,123 @@ export function SqlEditor({ tab, active }: { tab: DocumentTab; active: boolean }
   const host = useRef<HTMLDivElement>(null);
   const activeRef = useRef(active);
   activeRef.current = active;
+  // The source of a file can change while it stays open, with its text and undo history.
+  const connectionRef = useRef(tab.connectionId);
+  connectionRef.current = tab.connectionId;
+  const modelRef = useRef<Model | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  /** Text found on disk that differs from what this tab last saved, while it has edits of its own. */
+  const [conflict, setConflict] = useState<string | null>(null);
+  const commands = useRef({ save: () => {}, checkDisk: () => {}, reload: (_text: string) => {}, keepMine: (_text: string) => {} });
 
   const key = tab.kind === 'console' ? tab.name : tab.path;
 
   useEffect(() => {
     const doc = documentOf(tab);
     const isSql = languageOf(tab) === 'sql';
-    const model = monaco.editor.getModel(doc.uri) ?? monaco.editor.createModel('', languageOf(tab), doc.uri);
-    bindModel(model, tab.connectionId, tab.id);
+    const model = monaco.editor.createModel('', languageOf(tab), doc.uri);
+    modelRef.current = model;
     const editor = monaco.editor.create(host.current!, { ...EDITOR_OPTIONS, model });
     const dialect = (): Dialect =>
-      useConnections.getState().list.find((c) => c.id === tab.connectionId)?.driver ?? 'postgres';
+      useConnections.getState().list.find((c) => c.id === connectionRef.current)?.driver ?? 'postgres';
+    const workspace = useWorkspace.getState();
+    const writeKey = doc.uri.toString();
 
     let disposed = false;
     let loading = true;
-    doc.load().then(
-      (text) => {
-        if (!disposed && model.getValue() === '') model.setValue(text);
-        loading = false;
-      },
-      // An unreadable file (binary, too large) opens read-only with the reason.
-      (e) => {
-        if (disposed) return;
-        model.setValue(`Cannot open this file: ${errorMessage(e)}`);
-        editor.updateOptions({ readOnly: true });
-      },
-    );
+    /** What the document holds as far as this tab knows; null until loaded. */
+    let saved: string | null = null;
+    /** Text being applied from disk, which needs no saving. */
+    let applying = false;
+    const applyText = (text: string) => {
+      applying = true;
+      saved = text;
+      model.setValue(text);
+      applying = false;
+    };
+    lastWrite(writeKey)
+      .then(() => doc.load())
+      .then(
+        (text) => {
+          if (disposed) return;
+          applyText(text);
+          loading = false;
+        },
+        // An unreadable file (binary, too large) opens read-only with the reason. `loading`
+        // stays true, so nothing can ever write over it.
+        (e) => {
+          if (disposed) return;
+          setLoadError(errorMessage(e));
+          editor.updateOptions({ readOnly: true });
+        },
+      );
 
     let saveTimer = 0;
     const save = () => {
       window.clearTimeout(saveTimer);
-      void doc.save(model.getValue()).catch((e) => log('error', 'files', errorMessage(e)));
+      if (loading || workspace.isDiscarded(tab.id)) return;
+      const text = model.getValue();
+      if (text === saved) {
+        workspace.setSaveState(tab.id, null);
+        return;
+      }
+      const previous = saved;
+      saved = text;
+      const write = lastWrite(writeKey).then(() => doc.save(text));
+      writes.set(writeKey, write.catch(() => {}));
+      write.then(
+        () => {
+          if (disposed) return;
+          setSaveError(null);
+          if (model.getValue() === text) workspace.setSaveState(tab.id, null);
+        },
+        (e) => {
+          log('error', 'files', errorMessage(e));
+          if (saved === text) saved = previous;
+          if (disposed) return;
+          setSaveError(errorMessage(e));
+          workspace.setSaveState(tab.id, 'error');
+        },
+      );
     };
     const contentSub = model.onDidChangeContent(() => {
-      if (loading) return;
+      if (loading || applying) return;
       window.clearTimeout(saveTimer);
       saveTimer = window.setTimeout(save, 400);
+      workspace.setSaveState(tab.id, 'dirty');
       if (hasMarkers) clearMarkers();
     });
+
+    // Another program (git, another editor) may have changed the file meanwhile.
+    const checkDisk = () => {
+      if (tab.kind !== 'file' || loading || disposed || !activeRef.current) return;
+      void lastWrite(writeKey)
+        .then(() => doc.load())
+        .then((text) => {
+          if (disposed || text === saved) return;
+          if (model.getValue() === saved) applyText(text);
+          else setConflict(text);
+        })
+        .catch(() => {});
+    };
+    window.addEventListener('focus', checkDisk);
+    commands.current = {
+      save,
+      checkDisk,
+      reload: (text) => {
+        window.clearTimeout(saveTimer);
+        applyText(text);
+        workspace.setSaveState(tab.id, null);
+        setConflict(null);
+      },
+      // The next save overwrites what is on disk, as the user just chose.
+      keepMine: (text) => {
+        saved = text;
+        setConflict(null);
+        save();
+      },
+    };
 
     // Faint band behind the statement under the caret, like the run target.
     const current = editor.createDecorationsCollection();
@@ -178,7 +262,12 @@ export function SqlEditor({ tab, active }: { tab: DocumentTab; active: boolean }
     };
 
     const run = async (script: boolean) => {
-      if (!isSql || !tab.connectionId) return;
+      if (!isSql) return;
+      const connectionId = connectionRef.current;
+      if (!connectionId) {
+        await useUi.getState().ask({ title: 'No Data Source', message: 'Choose a data source in the editor toolbar to run this file.', confirmLabel: 'Close' });
+        return;
+      }
       const selection = editor.getSelection();
       let text: string;
       let base: number;
@@ -198,7 +287,7 @@ export function SqlEditor({ tab, active }: { tab: DocumentTab; active: boolean }
       }
       if (!text.trim()) return;
       if (hasMarkers) clearMarkers();
-      await runSql(tab.id, tab.connectionId, text, { baseOffset: base, onErrorAt: markError });
+      await runSql(tab.id, connectionId, text, { baseOffset: base, onErrorAt: markError });
     };
 
     editor.addAction({
@@ -240,20 +329,55 @@ export function SqlEditor({ tab, active }: { tab: DocumentTab; active: boolean }
     });
 
     return () => {
+      save();
       disposed = true;
-      if (!loading) save();
+      window.removeEventListener('focus', checkDisk);
+      workspace.setSaveState(tab.id, null);
       editorRegistry.delete(tab.id);
       contentSub.dispose();
       cursorSub.dispose();
       focusSub.dispose();
       editor.dispose();
+      // A reopened document must read from disk, not from what this tab last held.
+      model.dispose();
+      modelRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tab.id, tab.connectionId, key]);
+  }, [tab.id, key]);
 
   useEffect(() => {
-    if (active) editorRegistry.get(tab.id)?.focus();
+    if (modelRef.current) bindModel(modelRef.current, tab.connectionId, tab.id);
+  }, [tab.id, key, tab.connectionId]);
+
+  useEffect(() => {
+    if (!active) return;
+    editorRegistry.get(tab.id)?.focus();
+    commands.current.checkDisk();
   }, [active, tab.id]);
 
-  return <div className="editor-host" ref={host} />;
+  return (
+    <div className="ddl-view">
+      {loadError && <div className="inline-error">Cannot open this file: {loadError}</div>}
+      {saveError && (
+        <div className="inline-error editor-notice" role="alert">
+          <span>Could not save: {saveError}</span>
+          <button type="button" className="link-btn" onClick={() => commands.current.save()}>
+            Retry
+          </button>
+        </div>
+      )}
+      {conflict !== null && (
+        <div className="inline-error editor-notice" role="alert">
+          <span>This file changed on disk while you were editing it.</span>
+          <button type="button" className="link-btn" onClick={() => commands.current.reload(conflict)}>
+            Load from Disk
+          </button>
+          <button type="button" className="link-btn" onClick={() => commands.current.keepMine(conflict)}>
+            Keep Mine
+          </button>
+        </div>
+      )}
+      <div className="editor-host" ref={host} />
+    </div>
+  );
 }

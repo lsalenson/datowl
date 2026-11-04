@@ -53,6 +53,9 @@ pub trait ProjectRepository: Send + Sync {
     /// Deletes a project with its data sources (and their passwords) and consoles.
     fn delete(&self, id: Uuid) -> Result<()>;
 
+    /// Problems met while loading (a damaged file set aside) since the last call.
+    fn take_notices(&self) -> Vec<String>;
+
     /// Marks the project as opened now and returns its storage.
     fn open(&self, id: Uuid) -> Result<ProjectStorage>;
 }
@@ -109,6 +112,9 @@ pub trait ProjectFiles: Send + Sync {
 
     /// Replaces a file atomically.
     fn write_file(&self, root: &Path, path: &Path, text: &str) -> Result<()>;
+
+    /// Writes a file the user chose in a save dialog, wherever it is.
+    fn export_file(&self, path: &Path, text: &str) -> Result<()>;
 
     /// Git branch checked out in `path` or its nearest parent repository.
     fn git_branch(&self, path: &Path) -> Option<String>;

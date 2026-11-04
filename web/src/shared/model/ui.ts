@@ -19,31 +19,10 @@ export interface MenuItem {
   /** Small tag after the label, like DataGrip's "Beta". */
   badge?: string;
   submenu?: MenuItem[];
-  /** Shows a pin toggle at the end of the row; clicking it keeps the menu open. */
-  pinned?: boolean;
-  onPin?: () => void;
   onSelect?: () => void;
 }
 
-export type ToolWindowId =
-  | 'commit'
-  | 'explorer'
-  | 'files'
-  | 'find'
-  | 'run'
-  | 'debug'
-  | 'problems'
-  | 'structure'
-  | 'services'
-  | 'git'
-  | 'ai'
-  | 'bookmarks'
-  | 'coverage'
-  | 'changes'
-  | 'hierarchy'
-  | 'notifications'
-  | 'terminal'
-  | 'todo';
+export type ToolWindowId = 'explorer' | 'files' | 'services';
 
 /** A data source to prefill in the Data Sources dialog (from a pasted URL). */
 export type SourcePrefill = Partial<Omit<ConnectionConfig, 'id'>> & { driver: ConnectionConfig['driver']; password?: string };
@@ -52,7 +31,15 @@ export interface AskOptions {
   title: string;
   message?: ReactNode;
   /** Asks for a value; the dialog resolves with it. */
-  input?: { label: string; value: string; placeholder?: string };
+  input?: {
+    label: string;
+    value: string;
+    placeholder?: string;
+    /** Masks the value (it holds a password). */
+    secret?: boolean;
+    /** The confirm button stays disabled until exactly this is typed. */
+    matches?: string;
+  };
   /** SQL shown under the message, or derived from the input as it is typed. */
   preview?: string | ((value: string) => string);
   confirmLabel?: string;
@@ -67,6 +54,8 @@ export interface PasswordAnswer {
 
 interface PasswordRequest {
   connection: ConnectionConfig;
+  /** Why the previous attempt failed. */
+  error?: string;
   resolve: (answer: PasswordAnswer | null) => void;
 }
 
@@ -84,8 +73,8 @@ interface UiStore {
   filesVisible: boolean;
   bottomTab: 'output' | 'results';
   caret: { line: number; column: number } | null;
-  /** Tool windows shown as buttons in the main toolbar. */
-  pinnedTools: ToolWindowId[];
+  /** Services fills the window, to read a large result. */
+  servicesMaximized: boolean;
   /** Column profile panel next to result grids. */
   profileVisible: boolean;
 
@@ -98,7 +87,7 @@ interface UiStore {
   answerAsk(value: string | null): void;
   setPaletteOpen(open: boolean): void;
   closeDataSources(): void;
-  askPassword(connection: ConnectionConfig): Promise<PasswordAnswer | null>;
+  askPassword(connection: ConnectionConfig, error?: string): Promise<PasswordAnswer | null>;
   answerPassword(answer: PasswordAnswer | null): void;
   openMenu(x: number, y: number, items: MenuItem[]): void;
   closeMenu(): void;
@@ -108,9 +97,15 @@ interface UiStore {
   setFilesVisible(visible: boolean): void;
   setCaret(caret: { line: number; column: number } | null): void;
   setBottomTab(tab: 'output' | 'results'): void;
-  togglePinned(id: ToolWindowId): void;
+  setServicesMaximized(maximized: boolean): void;
   setProfileVisible(visible: boolean): void;
 }
+
+/** A modal holds the keyboard: global shortcuts wait until it closes. */
+export const isModalOpen = () => {
+  const { dataSourcesOpen, askRequest, passwordRequest } = useUi.getState();
+  return dataSourcesOpen || !!askRequest || !!passwordRequest;
+};
 
 export const PAGE_SIZES = [100, 500, 1000, 5000, 20000];
 
@@ -128,7 +123,7 @@ export const useUi = create<UiStore>((set, get) => ({
   filesVisible: false,
   bottomTab: 'output',
   caret: null,
-  pinnedTools: loadJson<ToolWindowId[]>('datowl.pinnedTools', ['explorer', 'services', 'files']),
+  servicesMaximized: false,
   profileVisible: loadJson('datowl.profileVisible', false),
 
   openDataSources: (selection = null) => set({ dataSourcesOpen: true, dataSourcesSelection: selection, dataSourcesPrefill: null }),
@@ -145,10 +140,10 @@ export const useUi = create<UiStore>((set, get) => ({
   },
   closeDataSources: () => set({ dataSourcesOpen: false }),
   setPaletteOpen: (paletteOpen) => set({ paletteOpen }),
-  askPassword: (connection) =>
+  askPassword: (connection, error) =>
     new Promise((resolve) => {
       get().passwordRequest?.resolve(null);
-      set({ passwordRequest: { connection, resolve } });
+      set({ passwordRequest: { connection, error, resolve } });
     }),
   answerPassword: (answer) => {
     get().passwordRequest?.resolve(answer);
@@ -165,12 +160,7 @@ export const useUi = create<UiStore>((set, get) => ({
   setFilesVisible: (filesVisible) => set({ filesVisible }),
   setCaret: (caret) => set({ caret }),
   setBottomTab: (bottomTab) => set({ bottomTab }),
-  togglePinned: (id) => {
-    const current = get().pinnedTools;
-    const pinnedTools = current.includes(id) ? current.filter((t) => t !== id) : [...current, id];
-    saveJson('datowl.pinnedTools', pinnedTools);
-    set({ pinnedTools });
-  },
+  setServicesMaximized: (servicesMaximized) => set({ servicesMaximized }),
   setProfileVisible: (profileVisible) => {
     saveJson('datowl.profileVisible', profileVisible);
     set({ profileVisible });

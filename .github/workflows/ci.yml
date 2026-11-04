@@ -1,0 +1,45 @@
+# Tests, warnings, types and the architecture rules of AGENTS.md, on the three OS: the code
+# paths differ between them (paths, keychain, webview). Release.yml reuses this workflow.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest, ubuntu-22.04]
+    runs-on: ${{ matrix.os }}
+    env:
+      RUSTFLAGS: -D warnings
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: swatinem/rust-cache@v2
+      - name: Install Linux build dependencies
+        if: startsWith(matrix.os, 'ubuntu')
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf xdg-utils libdbus-1-dev libssl-dev pkg-config
+      - run: npm ci --prefix web
+      # tauri::generate_context! embeds this folder: it must exist for the desktop crate to compile.
+      - run: npm --prefix web run build
+      - run: cargo check --workspace --tests
+      - run: cargo test --workspace
+      - name: Check the import rules
+        shell: bash
+        run: |
+          ! grep -rn "from '@/\(features\|app\)" web/src/shared
+          ! grep -rn "from '@/app" web/src/features
+          ! grep -rnE "from '@/features/[a-z]+/" web/src

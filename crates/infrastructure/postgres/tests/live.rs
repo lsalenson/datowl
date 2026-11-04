@@ -138,6 +138,22 @@ async fn paging_transactions_errors_and_cancel() {
 }
 
 #[tokio::test]
+async fn killed_backend_reports_a_lost_connection() {
+    let Some(s) = session().await else { return };
+    let victim = s.open_channel().await.unwrap();
+    let killer = s.open_channel().await.unwrap();
+
+    let (_, pid) = run(&*victim, "SELECT pg_backend_pid()", 10).await;
+    let pid = pid.rows[0][0].clone().unwrap();
+    let (killed, _) = run(&*killer, &format!("SELECT pg_terminate_backend({pid})"), 10).await;
+    killed.unwrap();
+
+    let (outcome, _) = run(&*victim, "SELECT 1", 10).await;
+    let error = outcome.unwrap_err();
+    assert!(error.is_connection_lost(), "{error:?}");
+}
+
+#[tokio::test]
 async fn channels_are_independent() {
     let Some(session) = session().await else { return };
     let (a, b) = (session.open_channel().await.unwrap(), session.open_channel().await.unwrap());

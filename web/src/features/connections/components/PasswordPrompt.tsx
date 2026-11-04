@@ -24,6 +24,7 @@ export function PasswordPrompt() {
     <Modal
       title={`Connect to ${request.connection.name}`}
       width={400}
+      dismissOnBackdrop={false}
       onClose={cancel}
       footer={
         <>
@@ -44,6 +45,11 @@ export function PasswordPrompt() {
           submit();
         }}
       >
+        {request.error && (
+          <p className="field-error" role="alert">
+            {request.error}
+          </p>
+        )}
         <label className="field">
           <span>User</span>
           <input value={request.connection.user} disabled />

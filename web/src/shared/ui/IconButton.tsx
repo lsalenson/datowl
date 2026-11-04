@@ -1,6 +1,8 @@
 import type { LucideIcon } from 'lucide-react';
 import type { ButtonHTMLAttributes } from 'react';
 
+import { formatShortcut } from '../lib/shortcuts';
+
 interface Props extends ButtonHTMLAttributes<HTMLButtonElement> {
   icon: LucideIcon;
   label: string;
@@ -15,7 +17,7 @@ export function IconButton({ icon: Icon, label, shortcut, tone = 'default', acti
     <button
       type="button"
       className={`icon-btn tone-${tone}${active ? ' active' : ''}${className ? ` ${className}` : ''}`}
-      title={shortcut ? `${label} (${shortcut})` : label}
+      title={shortcut ? `${label} (${formatShortcut(shortcut)})` : label}
       aria-label={label}
       {...rest}
     >

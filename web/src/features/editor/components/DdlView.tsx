@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 
-import { backend, errorMessage } from '@/shared/api';
+import { backend, errorMessage, isConnectionLost } from '@/shared/api';
 import { useConnections } from '@/features/connections';
 import type { EditorTab } from '@/features/workspace';
 import { monaco } from '../lib/monaco';
@@ -27,6 +27,7 @@ export function DdlView({ tab }: { tab: DdlTab }) {
         const ddl = await backend.ddl(tab.connectionId, tab.object);
         if (!disposed) model.setValue(ddl);
       } catch (e) {
+        if (isConnectionLost(e)) useConnections.getState().markLost(tab.connectionId, errorMessage(e));
         if (!disposed) setError(errorMessage(e));
       }
     })();

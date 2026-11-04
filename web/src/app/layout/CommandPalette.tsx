@@ -14,6 +14,7 @@ import {
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 
 import { useConnections } from '@/features/connections';
+import { formatShortcut } from '@/shared/lib/shortcuts';
 import { useUi } from '@/shared/model/ui';
 import { tabTitle, useWorkspace } from '@/features/workspace';
 
@@ -61,9 +62,9 @@ function useItems(): Item[] {
     }
     items.push(
       { id: 'new-source', group: 'Actions', title: 'New data source', icon: Plus, run: () => ui.openDataSources('new') },
-      { id: 'sources', group: 'Actions', title: 'Data sources…', hint: '⌘;', icon: Settings2, run: () => ui.openDataSources(target ?? null) },
-      { id: 'explorer', group: 'Actions', title: 'Toggle explorer', hint: '⌘1', icon: PanelLeft, run: () => ui.setExplorerVisible(!ui.explorerVisible) },
-      { id: 'services', group: 'Actions', title: 'Toggle services', hint: '⌘8', icon: PanelBottom, run: () => ui.setServicesVisible(!ui.servicesVisible) },
+      { id: 'sources', group: 'Actions', title: 'Data sources…', hint: formatShortcut('⌘;'), icon: Settings2, run: () => ui.openDataSources(target ?? null) },
+      { id: 'explorer', group: 'Actions', title: 'Toggle explorer', hint: formatShortcut('⌘1'), icon: PanelLeft, run: () => ui.setExplorerVisible(!ui.explorerVisible) },
+      { id: 'services', group: 'Actions', title: 'Toggle services', hint: formatShortcut('⌘8'), icon: PanelBottom, run: () => ui.setServicesVisible(!ui.servicesVisible) },
     );
 
     for (const tab of tabs) {

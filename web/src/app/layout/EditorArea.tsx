@@ -1,6 +1,6 @@
 import {
-  Check,
   ChevronDown,
+  Database,
   FastForward,
   FileCode2,
   FileText,
@@ -9,12 +9,13 @@ import {
   Square,
   SquareTerminal,
   Table2,
-  Undo2,
+  TriangleAlert,
   X,
 } from 'lucide-react';
 import type { MouseEvent } from 'react';
 
 import { IconButton } from '@/shared/ui/IconButton';
+import { formatShortcut } from '@/shared/lib/shortcuts';
 import { quoteIdent } from '@/shared/lib/sql';
 import { useConnections } from '@/features/connections';
 import { tabResults, useResults } from '@/features/query';
@@ -37,6 +38,7 @@ export function EditorArea() {
   const tabs = useWorkspace((s) => s.tabs);
   const activeId = useWorkspace((s) => s.activeId);
   const activate = useWorkspace((s) => s.activate);
+  const saveStates = useWorkspace((s) => s.saveStates);
   const connections = useConnections((s) => s.list);
   const openMenu = useUi((s) => s.openMenu);
 
@@ -84,6 +86,12 @@ export function EditorArea() {
               <Icon size={14} className={`tab-icon kind-${tab.kind}`} />
               <span>{tabTitle(tab)}</span>
               <span className="tab-source">[{connections.find((c) => c.id === tab.connectionId)?.name}]</span>
+              {saveStates[tab.id] && (
+                <span
+                  className={`save-dot ${saveStates[tab.id]}`}
+                  title={saveStates[tab.id] === 'error' ? 'Could not be saved' : 'Saving…'}
+                />
+              )}
               {color && <span className="color-dot" style={{ background: color, boxShadow: `0 0 8px ${color}` }} />}
               <button
                 type="button"
@@ -100,7 +108,7 @@ export function EditorArea() {
       </nav>
         {tabs.length > 0 && <IconButton icon={ChevronDown} label="Show Hidden Tabs" size={14} onClick={tabsMenu} />}
       </header>
-      {active?.kind === 'console' && <ConsoleToolbar tab={active} />}
+      {(active?.kind === 'console' || (active?.kind === 'file' && /\.sql$/i.test(active.path))) && <DocumentToolbar tab={active} />}
       <div className="editor-panes">
         {tabs.map((tab) => (
           <div key={tab.id} className="editor-pane" hidden={tab.id !== activeId}>
@@ -115,21 +123,30 @@ export function EditorArea() {
   );
 }
 
-function ConsoleToolbar({ tab }: { tab: Extract<EditorTab, { kind: 'console' }> }) {
+/** Above a console or a .sql file. A console belongs to its data source; a file can run on any. */
+function DocumentToolbar({ tab }: { tab: Extract<EditorTab, { kind: 'console' | 'file' }> }) {
   const results = useResults(tabResults(tab.id));
   const connection = useConnections((s) => s.list.find((c) => c.id === tab.connectionId));
+  const connections = useConnections((s) => s.list);
+  const setTabConnection = useWorkspace((s) => s.setTabConnection);
   const snapshot = useConnections((s) => s.schema[tab.connectionId]);
   const consoleSchema = useConnections((s) => s.consoleSchemas[tab.connectionId]?.[tab.id]);
   const currentSchema = consoleSchema ?? snapshot?.defaultSchema;
   const openMenu = useUi((s) => s.openMenu);
   const commands = () => editorRegistry.get(tab.id);
 
-  const txMenu = (e: MouseEvent) => {
+  const sourceMenu = (e: MouseEvent) => {
     const r = e.currentTarget.getBoundingClientRect();
-    openMenu(r.left, r.bottom + 4, [
-      { label: 'Auto  ✓', onSelect: () => {} },
-      { label: 'Manual', disabled: true },
-    ]);
+    openMenu(
+      r.left,
+      r.bottom + 4,
+      connections.length
+        ? connections.map((c) => ({
+            label: c.id === tab.connectionId ? `${c.name}  ✓` : c.name,
+            onSelect: () => setTabConnection(tab.id, c.id),
+          }))
+        : [{ label: 'No data sources', disabled: true }],
+    );
   };
 
   // Switching the default schema runs SET search_path (Postgres) or USE (ClickHouse), which
@@ -160,21 +177,15 @@ function ConsoleToolbar({ tab }: { tab: Extract<EditorTab, { kind: 'console' }> 
 
   return (
     <div className="toolbar console-toolbar">
-      <IconButton icon={Play} tone="run" label="Execute" shortcut="⌘↵" disabled={results.running} onClick={() => commands()?.run()} />
+      <IconButton icon={Play} tone="run" label="Execute" shortcut="⌘↵" disabled={results.running || !tab.connectionId} onClick={() => commands()?.run()} />
       <IconButton
         icon={FastForward}
         tone="run"
         label="Execute Script"
         shortcut="⇧⌘↵"
-        disabled={results.running}
+        disabled={results.running || !tab.connectionId}
         onClick={() => commands()?.runScript()}
       />
-      <span className="toolbar-separator" />
-      <button type="button" className="tool-select" onClick={txMenu} title="Transaction mode">
-        Tx: Auto <ChevronDown size={12} />
-      </button>
-      <IconButton icon={Check} label="Commit" disabled />
-      <IconButton icon={Undo2} label="Rollback" disabled />
       <span className="toolbar-separator" />
       <IconButton
         icon={Square}
@@ -185,15 +196,27 @@ function ConsoleToolbar({ tab }: { tab: Extract<EditorTab, { kind: 'console' }> 
         disabled={!results.running}
         onClick={() => void cancelRun(tab.id)}
       />
+      {results.transactionOpen && (
+        <span className="tx-open" role="status" title="Run COMMIT or ROLLBACK to end it. Closing this tab rolls it back.">
+          <TriangleAlert size={12} /> Transaction open
+        </span>
+      )}
       <span className="toolbar-spacer" />
+      {tab.kind === 'file' && (
+        <button type="button" className="tool-select" onClick={sourceMenu} title="Data source that runs this file">
+          <Database size={13} /> {connection?.name ?? 'Choose data source'} <ChevronDown size={12} />
+        </button>
+      )}
       {connection && (
         <>
           <button type="button" className="tool-select" onClick={schemaMenu} title="Default schema">
             <Layers size={13} /> {target} <ChevronDown size={12} />
           </button>
-          <span className="tool-select static" title="Session">
-            <SquareTerminal size={13} /> {tab.name}
-          </span>
+          {tab.kind === 'console' && (
+            <span className="tool-select static" title="Session">
+              <SquareTerminal size={13} /> {tab.name}
+            </span>
+          )}
         </>
       )}
     </div>
@@ -221,7 +244,7 @@ function Welcome() {
         {HINTS.map(([label, keys]) => (
           <div key={label} className="hint">
             <dt>{label}</dt>
-            <dd>{keys}</dd>
+            <dd>{formatShortcut(keys)}</dd>
           </div>
         ))}
       </dl>

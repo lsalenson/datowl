@@ -69,7 +69,7 @@ export type RunEvent =
       elapsedMs: number;
       resultToken: number | null;
     }
-  | { kind: 'error'; index: number; message: string; position: number | null }
+  | { kind: 'error'; index: number; message: string; position: number | null; connectionLost?: boolean }
   | { kind: 'finished'; elapsedMs: number; cancelled: boolean };
 
 export type ObjectKind = 'table' | 'view' | 'materializedView' | 'function';
@@ -135,7 +135,11 @@ export interface StatementRange {
 export interface CommandError {
   message: string;
   position: number | null;
+  /** The session is gone: the next action must reconnect. */
+  connectionLost?: boolean;
 }
+
+export const isConnectionLost = (e: unknown) => !!(e && typeof e === 'object' && (e as CommandError).connectionLost);
 
 export function errorMessage(e: unknown): string {
   if (typeof e === 'string') return e;

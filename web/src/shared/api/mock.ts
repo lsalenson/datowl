@@ -147,15 +147,15 @@ function emitPage(c: Cursor, pageSize: number, index: number, onEvent: (e: RunEv
 
 // The demo project's folder: `null` marks a directory.
 const MOCK_FILES: Record<string, string | null> = {
-  '~/Projets/demo/db': null,
-  '~/Projets/demo/db/migrations': null,
-  '~/Projets/demo/db/migrations/001_init.sql': 'create table users (\n  id bigserial primary key,\n  email text not null\n);\n',
-  '~/Projets/demo/db/reports.sql': 'select status, count(*) from orders group by status;\n',
-  '~/Projets/demo/docs': null,
-  '~/Projets/demo/docs/schema.md': '# Schema\n\nUsers and orders.\n',
-  '~/Projets/demo/.env.example': 'DATABASE_URL=postgres://localhost/demo\n',
-  '~/Projets/demo/README.md': '# demo\n',
-  '~/Projets/demo/compose.yaml': 'services:\n  db:\n    image: postgres:16\n',
+  '/Users/demo/Projets/demo/db': null,
+  '/Users/demo/Projets/demo/db/migrations': null,
+  '/Users/demo/Projets/demo/db/migrations/001_init.sql': 'create table users (\n  id bigserial primary key,\n  email text not null\n);\n',
+  '/Users/demo/Projets/demo/db/reports.sql': 'select status, count(*) from orders group by status;\n',
+  '/Users/demo/Projets/demo/docs': null,
+  '/Users/demo/Projets/demo/docs/schema.md': '# Schema\n\nUsers and orders.\n',
+  '/Users/demo/Projets/demo/.env.example': 'DATABASE_URL=postgres://localhost/demo\n',
+  '/Users/demo/Projets/demo/README.md': '# demo\n',
+  '/Users/demo/Projets/demo/compose.yaml': 'services:\n  db:\n    image: postgres:16\n',
 };
 
 // Projects survive reloads (switching project reloads the page), like the real registry.
@@ -172,7 +172,7 @@ function mockProjects(): { current: string; projects: Project[] } {
   return {
     current: 'p-demo',
     projects: [
-      { id: 'p-demo', name: 'demo', path: '~/Projets/demo', lastOpened: now, branch: 'main' },
+      { id: 'p-demo', name: 'demo', path: '/Users/demo/Projets/demo', lastOpened: now, branch: 'main' },
       { id: 'p-warehouse', name: 'warehouse', path: '~/DataGripProjects/warehouse', lastOpened: now - hour, branch: null },
       { id: 'p-th42', name: 'TH42', path: null, lastOpened: now - 5 * hour, branch: null },
     ],
@@ -187,6 +187,15 @@ function saveMockProjects(state: { current: string; projects: Project[] }) {
 }
 
 export const mockBackend: Backend = {
+  takeNotices: async () => [],
+  exportFile: async (name, text) => {
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(new Blob([text]));
+    link.download = name;
+    link.click();
+    URL.revokeObjectURL(link.href);
+    return name;
+  },
   listProjects: async () => {
     const state = mockProjects();
     return { ...state, projects: [...state.projects].sort((a, b) => b.lastOpened - a.lastOpened) };

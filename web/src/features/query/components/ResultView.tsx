@@ -1,45 +1,39 @@
 import {
-  ArrowUpToLine,
+  Check,
   ChartColumn,
   ChevronDown,
-  ChevronFirst,
   ChevronLast,
-  ChevronLeft,
   ChevronRight,
+  Copy,
   Download,
-  Eye,
-  History,
   LoaderCircle,
-  Minus,
-  Plus,
   RefreshCw,
-  Search,
-  Settings,
   Square,
-  Undo2,
-  Upload,
   X,
 } from 'lucide-react';
 import { useCallback, useMemo, useState, useSyncExternalStore, type MouseEvent, type ReactNode } from 'react';
 
+import { backend, errorMessage } from '@/shared/api';
+import { formatShortcut } from '@/shared/lib/shortcuts';
+import { log } from '@/shared/model/output';
 import { IconButton } from '@/shared/ui/IconButton';
 import type { ResultSet } from '../model/results';
 import { useUi } from '@/shared/model/ui';
-import { cancelRun, fetchMore, formatMs } from '../model/runner';
+import { cancelRun, fetchMore, formatMs, MAX_LOADED_ROWS, plural } from '../model/runner';
 import { exportRows, type ExportFormat } from '../lib/export';
 import { filterLabel, filterRows, sameFilter, type RowFilter } from '../lib/profile';
 import { ProfilePanel } from './ProfilePanel';
 import { ResultGrid, type SortState } from './ResultGrid';
 
-const EXTRACTORS: [ExportFormat, string][] = [
-  ['csv', 'CSV'],
-  ['tsv', 'TSV'],
-  ['json', 'JSON'],
-  ['markdown', 'Markdown'],
-  ['insert', 'SQL Inserts'],
+const EXTRACTORS: [ExportFormat, string, string][] = [
+  ['csv', 'CSV', 'csv'],
+  ['tsv', 'TSV', 'tsv'],
+  ['json', 'JSON', 'json'],
+  ['markdown', 'Markdown', 'md'],
+  ['insert', 'SQL Inserts', 'sql'],
 ];
 
-const READ_ONLY = 'not available yet';
+type Delivery = 'file' | 'clipboard';
 
 interface ToolbarProps {
   tabId: string;
@@ -49,11 +43,12 @@ interface ToolbarProps {
   running?: boolean;
   onReload?: () => void;
   onDdl?: () => void;
+  /** Rows left by the profile filters, when some apply. */
+  view?: number[] | null;
 }
 
-/** Data editor toolbar, in DataGrip's order: reload, history, stop · paging · row
- *  edits · DDL, search ··· extractor, export, import, view, settings. */
-export function DataToolbar({ tabId, connectionId, set, running, onReload, onDdl }: ToolbarProps) {
+/** Data toolbar: reload, stop · paging · DDL, profile ··· extractor, save, copy. */
+export function DataToolbar({ tabId, connectionId, set, running, onReload, onDdl, view }: ToolbarProps) {
   useSyncExternalStore(set?.buffer.subscribe ?? noopSubscribe, set?.buffer.getVersion ?? zero);
   const openMenu = useUi((s) => s.openMenu);
   const profileVisible = useUi((s) => s.profileVisible);
@@ -61,7 +56,8 @@ export function DataToolbar({ tabId, connectionId, set, running, onReload, onDdl
   const [extractor, setExtractor] = useState<ExportFormat>('csv');
   const rows = set?.buffer.rows.length ?? 0;
   const busy = running || set?.status === 'running' || !!set?.fetching;
-  const canPage = !!set?.hasMore && !busy;
+  const canPage = !!set?.hasMore && !busy && rows < MAX_LOADED_ROWS;
+  const [delivered, setDelivered] = useState<Delivery | null>(null);
 
   const chooseExtractor = (e: MouseEvent) => {
     const r = e.currentTarget.getBoundingClientRect();
@@ -74,51 +70,92 @@ export function DataToolbar({ tabId, connectionId, set, running, onReload, onDdl
       })),
     );
   };
-  const label = EXTRACTORS.find(([f]) => f === extractor)![1];
-  const copyAll = () =>
-    set && void navigator.clipboard.writeText(exportRows(extractor, set.buffer.columns, set.buffer.rows, set.title));
+  const [, label, extension] = EXTRACTORS.find(([f]) => f === extractor)!;
+
+  const deliver = async (how: Delivery, scope: 'view' | 'loaded' | 'all') => {
+    if (!set) return;
+    const fail = (e: unknown) =>
+      void useUi.getState().ask({ title: 'Export Failed', message: errorMessage(e), confirmLabel: 'Close' });
+    try {
+      if (scope === 'all') await fetchMore(tabId, connectionId, set.id, true);
+      const all = set.buffer.rows;
+      const chosen = scope === 'view' && view ? view.map((i) => all[i]) : all;
+      const text = exportRows(extractor, set.buffer.columns, chosen, set.title);
+      if (how === 'clipboard') {
+        await navigator.clipboard.writeText(text);
+      } else {
+        const name = `${set.title.replace(/[\\/:*?"<>|]+/g, '_')}.${extension}`;
+        const path = await backend.exportFile(name, text);
+        if (path === null) return;
+        log('success', 'export', `${plural(chosen.length, 'row')} saved to ${path}`);
+      }
+      setDelivered(how);
+      window.setTimeout(() => setDelivered(null), 1800);
+    } catch (e) {
+      fail(e);
+    }
+  };
+
+  // What gets exported is always spelled out when it is not simply what the grid holds.
+  const chooseScope = (e: MouseEvent, how: Delivery) => {
+    if (!set) return;
+    if (!view && !set.hasMore) return void deliver(how, 'loaded');
+    const r = e.currentTarget.getBoundingClientRect();
+    const count = (n: number) => n.toLocaleString('en-US');
+    openMenu(r.right - 240, r.bottom + 4, [
+      ...(view ? [{ label: `${count(view.length)} filtered rows`, onSelect: () => void deliver(how, 'view') }] : []),
+      { label: `${count(rows)} loaded rows`, onSelect: () => void deliver(how, 'loaded') },
+      ...(set.hasMore
+        ? [{ label: `All rows (up to ${count(MAX_LOADED_ROWS)}), fetched first`, onSelect: () => void deliver(how, 'all') }]
+        : []),
+    ]);
+  };
+
+  const fetchAll = async () => {
+    if (!set) return;
+    const ok = await useUi.getState().ask({
+      title: 'Fetch All Rows',
+      message: `This loads up to ${MAX_LOADED_ROWS.toLocaleString('en-US')} rows into memory. You can stop it at any time.`,
+      confirmLabel: 'Fetch',
+    });
+    if (ok !== null) void fetchMore(tabId, connectionId, set.id, true);
+  };
 
   return (
     <div className="toolbar data-toolbar">
       <IconButton icon={RefreshCw} label="Reload Page" shortcut="⌘R" size={14} disabled={!onReload || busy} onClick={onReload} />
-      <IconButton icon={History} label={`Query History — ${READ_ONLY}`} size={14} disabled />
       <IconButton icon={Square} tone="stop" label="Cancel Running Statements" size={12} disabled={!busy} onClick={() => void cancelRun(tabId)} />
       <span className="toolbar-separator" />
-      <IconButton icon={ChevronFirst} label="First Page" size={15} disabled />
-      <IconButton icon={ChevronLeft} label="Previous Page" size={15} disabled />
-      <span className="page-range" title={set?.hasMore ? 'More rows are available on the server' : undefined}>
+      <span
+        className="page-range"
+        title={rows >= MAX_LOADED_ROWS ? `Datowl keeps at most ${MAX_LOADED_ROWS.toLocaleString('en-US')} rows` : set?.hasMore ? 'More rows are available on the server' : undefined}
+      >
         {set ? `${rows.toLocaleString('en-US')}${set.hasMore ? '+' : ''} rows` : '— rows'}
       </span>
       <IconButton
         icon={ChevronRight}
-        label="Next Page"
+        label="Load Next Page"
         size={15}
         disabled={!canPage}
         onClick={() => set && void fetchMore(tabId, connectionId, set.id)}
       />
       <IconButton
         icon={ChevronLast}
-        label="Last Page (fetch all rows)"
+        label="Fetch All Rows"
         size={15}
         disabled={!canPage}
-        onClick={() => set && void fetchMore(tabId, connectionId, set.id, true)}
+        onClick={() => void fetchAll()}
       />
       <span className="toolbar-separator" />
-      <IconButton icon={Plus} label={`Add Row — ${READ_ONLY}`} size={15} disabled />
-      <IconButton icon={Minus} label={`Delete Row — ${READ_ONLY}`} size={15} disabled />
-      <IconButton icon={Undo2} label="Revert Selected" size={14} disabled />
-      <IconButton icon={ArrowUpToLine} label="Submit" size={14} disabled />
-      <span className="toolbar-separator" />
       {onDdl && (
-        <button type="button" className="text-btn" title="Show DDL (⌘B)" onClick={onDdl}>
+        <button type="button" className="text-btn" title={`Show DDL (${formatShortcut('⌘B')})`} onClick={onDdl}>
           DDL
         </button>
       )}
-      <IconButton icon={Search} label={`Search in Results — ${READ_ONLY}`} size={14} disabled />
       <button
         type="button"
         className={`text-btn with-icon${set && profileVisible ? ' active' : ''}`}
-        title="Profile Columns (⌥⌘P)"
+        title={`Profile Columns (${formatShortcut('⌥⌘P')})`}
         disabled={!set}
         onClick={() => setProfileVisible(!profileVisible)}
       >
@@ -140,11 +177,20 @@ export function DataToolbar({ tabId, connectionId, set, running, onReload, onDdl
       <button type="button" className="tool-select" onClick={chooseExtractor} title="Data extractor">
         {label} <ChevronDown size={12} />
       </button>
-      <IconButton icon={Download} label={`Export Data (copy as ${label})`} size={14} disabled={rows === 0} onClick={copyAll} />
-      <IconButton icon={Upload} label={`Import Data — ${READ_ONLY}`} size={14} disabled />
-      <span className="toolbar-separator" />
-      <IconButton icon={Eye} label="View Options" size={14} disabled />
-      <IconButton icon={Settings} label="Data Editor Settings" size={14} disabled />
+      <IconButton
+        icon={delivered === 'file' ? Check : Download}
+        label={delivered === 'file' ? 'Saved' : `Save as ${label}…`}
+        size={14}
+        disabled={rows === 0}
+        onClick={(e) => chooseScope(e, 'file')}
+      />
+      <IconButton
+        icon={delivered === 'clipboard' ? Check : Copy}
+        label={delivered === 'clipboard' ? 'Copied' : `Copy as ${label}`}
+        size={14}
+        disabled={rows === 0}
+        onClick={(e) => chooseScope(e, 'clipboard')}
+      />
     </div>
   );
 }
@@ -184,12 +230,12 @@ export function ResultView({ tabId, connectionId, set, onReload, onDdl, below, s
   const [focused, setFocused] = useState<number | null>(null);
 
   const onNearEnd = useCallback(() => {
-    if (set.hasMore && !set.fetching) void fetchMore(tabId, connectionId, set.id);
+    if (set.hasMore && !set.fetching && set.buffer.rows.length < MAX_LOADED_ROWS) void fetchMore(tabId, connectionId, set.id);
   }, [tabId, connectionId, set.id, set.hasMore, set.fetching]);
 
   return (
     <div className="result-view">
-      <DataToolbar tabId={tabId} connectionId={connectionId} set={set} onReload={onReload} onDdl={onDdl} />
+      <DataToolbar tabId={tabId} connectionId={connectionId} set={set} onReload={onReload} onDdl={onDdl} view={view} />
       {below}
       {set.status === 'error' && rows === 0 ? (
         <div className="result-error">{set.error}</div>

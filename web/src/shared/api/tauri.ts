@@ -11,6 +11,7 @@ function channel(onEvent: (e: RunEvent) => void): Channel<RunEvent> {
 
 export const tauriBackend: Backend = {
   listProjects: () => invoke('list_projects'),
+  takeNotices: () => invoke('take_notices'),
   createProject: (name, path) => invoke('create_project', { name, path }),
   openProject: (id) => invoke('open_project', { id }),
   renameProject: (id, name) => invoke('rename_project', { id, name }),
@@ -20,6 +21,7 @@ export const tauriBackend: Backend = {
   listDir: (path) => invoke('list_dir', { path }),
   readFile: (path) => invoke('read_file', { path }),
   writeFile: (path, text) => invoke('write_file', { path, text }),
+  exportFile: (name, text) => invoke('export_file', { name, text }),
 
   listConnections: () => invoke('list_connections'),
   saveConnection: (config, password) => invoke('save_connection', { config, password }),

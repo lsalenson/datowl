@@ -17,6 +17,8 @@ import type {
 /** Everything the UI asks of the Rust side. */
 export interface Backend {
   listProjects(): Promise<ProjectList>;
+  /** Problems met while loading (a damaged file set aside), once. */
+  takeNotices(): Promise<string[]>;
   createProject(name: string, path: string | null): Promise<Project>;
   /** Makes `id` the open project; the previous project's sessions are closed. */
   openProject(id: string): Promise<void>;
@@ -30,6 +32,8 @@ export interface Backend {
   listDir(path: string): Promise<FileEntry[]>;
   readFile(path: string): Promise<string>;
   writeFile(path: string, text: string): Promise<void>;
+  /** Asks where to save, then writes. Resolves with the chosen path, null when cancelled. */
+  exportFile(name: string, text: string): Promise<string | null>;
 
   listConnections(): Promise<ConnectionConfig[]>;
   /** `password: null` keeps the stored password. */

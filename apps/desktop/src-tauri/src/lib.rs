@@ -13,7 +13,15 @@ use datowl_clickhouse::ClickhouseDriver;
 use datowl_postgres::PostgresDriver;
 use datowl_store::{LocalFiles, Projects};
 use tauri::Manager;
+use tauri_plugin_dialog::{DialogExt, MessageDialogKind};
 use tracing_subscriber::EnvFilter;
+
+fn open_app(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
+    let projects = Arc::new(Projects::open(app.path().app_data_dir()?)?);
+    let engines = Engines::default().with(PostgresDriver).with(ClickhouseDriver);
+    app.manage(App::new(projects, Arc::new(LocalFiles), engines)?);
+    Ok(())
+}
 
 pub fn run() {
     tracing_subscriber::fmt()
@@ -25,9 +33,15 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .setup(|app| {
-            let projects = Arc::new(Projects::open(app.path().app_data_dir()?)?);
-            let engines = Engines::default().with(PostgresDriver).with(ClickhouseDriver);
-            app.manage(App::new(projects, Arc::new(LocalFiles), engines)?);
+            if let Err(e) = open_app(app) {
+                // Without this the app would vanish with nothing but a line on stderr.
+                let handle = app.handle().clone();
+                app.dialog()
+                    .message(format!("Datowl cannot start: {e}"))
+                    .kind(MessageDialogKind::Error)
+                    .title("Datowl")
+                    .show(move |_| handle.exit(1));
+            }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -54,7 +68,9 @@ pub fn run() {
             commands::files::list_dir,
             commands::files::read_file,
             commands::files::write_file,
+            commands::files::export_file,
             commands::projects::list_projects,
+            commands::projects::take_notices,
             commands::projects::create_project,
             commands::projects::open_project,
             commands::projects::rename_project,

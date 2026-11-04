@@ -11,10 +11,10 @@ import { DataSourcesDialog } from '@/features/connections';
 import { PasswordPrompt } from '@/features/connections';
 import { Explorer } from '@/features/explorer';
 import { FilesPanel } from '@/features/files';
-import { ServicesPanel } from '@/features/query';
+import { ServicesPanel, useResults } from '@/features/query';
 import { EditorArea } from './layout/EditorArea';
 import { useConnections } from '@/features/connections';
-import { useUi } from '@/shared/model/ui';
+import { isModalOpen, useUi } from '@/shared/model/ui';
 import { useWorkspace } from '@/features/workspace';
 
 /** Keeps a collapsible panel in sync with its visibility flag. */
@@ -32,27 +32,47 @@ function usePanelVisibility(visible: boolean) {
 export function App() {
   const explorerVisible = useUi((s) => s.explorerVisible);
   const servicesVisible = useUi((s) => s.servicesVisible);
+  const servicesMaximized = useUi((s) => s.servicesMaximized);
   const explorerRef = usePanelVisibility(explorerVisible);
   const servicesRef = usePanelVisibility(servicesVisible);
   const filesRef = usePanelVisibility(useUi((s) => s.filesVisible));
 
+  const sizeBeforeMaximize = useRef<number | null>(null);
+  useEffect(() => {
+    const panel = servicesRef.current;
+    if (!panel) return;
+    if (servicesMaximized) {
+      sizeBeforeMaximize.current = panel.getSize();
+      panel.resize(80);
+    } else if (sizeBeforeMaximize.current !== null) {
+      panel.resize(sizeBeforeMaximize.current);
+      sizeBeforeMaximize.current = null;
+    }
+  }, [servicesMaximized, servicesRef]);
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (!(e.metaKey || e.ctrlKey)) return;
+      if (!(e.metaKey || e.ctrlKey) || isModalOpen()) return;
       const ui = useUi.getState();
+      // Over the palette, only its own shortcut.
+      if (ui.paletteOpen && e.key !== 'k') return;
       if (e.shiftKey && e.key.toLowerCase() === 'l') {
         const { tabs, activeId, newConsole } = useWorkspace.getState();
         const connectionId = tabs.find((t) => t.id === activeId)?.connectionId ?? useConnections.getState().list[0]?.id;
         if (connectionId) void newConsole(connectionId);
       } else if (e.altKey && e.code === 'KeyP') ui.setProfileVisible(!ui.profileVisible);
       else if (e.key === 'k') ui.setPaletteOpen(!ui.paletteOpen);
+      else if (e.key === 'n') ui.openDataSources('new');
       else if (e.key === '1') ui.setExplorerVisible(!ui.explorerVisible);
       else if (e.key === '2') ui.setFilesVisible(!ui.filesVisible);
       else if (e.key === '8') ui.setServicesVisible(!ui.servicesVisible);
       else if (e.key === ';') ui.openDataSources(useWorkspace.getState().tabs.find((t) => t.id === useWorkspace.getState().activeId)?.connectionId ?? null);
       else if (e.key === 'w') {
         const { activeId, close } = useWorkspace.getState();
-        if (activeId) close(activeId);
+        if (activeId) {
+          useResults.getState().dropTab(activeId);
+          close(activeId);
+        }
       } else return;
       e.preventDefault();
     };
@@ -65,14 +85,14 @@ export function App() {
       <MainToolbar />
       {/* DataGrip "islands": explorer and editor side by side, Services across the bottom. */}
       <div className="workspace">
-        <PanelGroup direction="vertical" autoSaveId="datowl.layout.v2" className="panels">
+        <PanelGroup direction="vertical" autoSaveId="datowl.layout.v3" className="panels">
           <Panel id="top" order={1} minSize={20}>
-            <PanelGroup direction="horizontal" autoSaveId="datowl.layout.h2">
+            <PanelGroup direction="horizontal" autoSaveId="datowl.layout.h3">
               <Panel
                 ref={explorerRef}
                 id="explorer"
                 order={1}
-                defaultSize={42}
+                defaultSize={22}
                 minSize={14}
                 collapsible
                 onCollapse={() => useUi.getState().setExplorerVisible(false)}
@@ -104,7 +124,7 @@ export function App() {
             ref={servicesRef}
             id="services"
             order={2}
-            defaultSize={24}
+            defaultSize={50}
             minSize={10}
             collapsible
             onCollapse={() => useUi.getState().setServicesVisible(false)}

@@ -1,5 +1,6 @@
 import { ChevronRight, LockOpen } from 'lucide-react';
 
+import { pathSegments, relativeSegments } from '@/shared/lib/path';
 import { useConnections } from '@/features/connections';
 import { useProjects } from '@/features/projects';
 import { PAGE_SIZES, useUi } from '@/shared/model/ui';
@@ -8,10 +9,8 @@ import { tabTitle, useWorkspace } from '@/features/workspace';
 /** Breadcrumbs on the left, editor and connection widgets on the right. */
 /** `project › folder › file` for a file of the project folder. */
 function fileCrumbs(path: string, projectName?: string, projectPath?: string | null): string[] {
-  if (projectPath && path.startsWith(`${projectPath}/`)) {
-    return [projectName ?? '', ...path.slice(projectPath.length + 1).split('/')];
-  }
-  return path.split('/').filter(Boolean);
+  const inside = projectPath ? relativeSegments(path, projectPath) : null;
+  return inside ? [projectName ?? '', ...inside] : pathSegments(path);
 }
 
 export function StatusBar() {

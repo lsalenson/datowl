@@ -1,6 +1,7 @@
-import { ChevronRight, Pin } from 'lucide-react';
+import { ChevronRight } from 'lucide-react';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 
+import { formatShortcut } from '../lib/shortcuts';
 import { useUi, type MenuItem } from '../model/ui';
 
 /** Single global context menu, opened through `useUi().openMenu`. */
@@ -46,7 +47,6 @@ export function ContextMenu() {
 function MenuItems({ items, close }: { items: MenuItem[]; close: () => void }) {
   const [openSub, setOpenSub] = useState<number | null>(null);
   const withIcons = items.some((item) => item.icon);
-  const withPins = items.some((item) => item.onPin);
 
   return items.map((item, i) =>
     item.separator ? (
@@ -79,21 +79,9 @@ function MenuItems({ items, close }: { items: MenuItem[]; close: () => void }) {
             <span className="menu-label">{item.label}</span>
           )}
           {item.badge && <span className="menu-badge">{item.badge}</span>}
-          {item.shortcut && <kbd>{item.shortcut}</kbd>}
+          {item.shortcut && <kbd>{formatShortcut(item.shortcut)}</kbd>}
           {item.submenu && <ChevronRight size={12} className="menu-chevron" />}
         </button>
-        {withPins && (
-          <button
-            type="button"
-            className={`menu-pin${item.pinned ? ' pinned' : ''}`}
-            disabled={!item.onPin}
-            aria-label={item.pinned ? `Unpin ${item.label}` : `Pin ${item.label}`}
-            title={item.onPin ? (item.pinned ? 'Unpin from Toolbar' : 'Pin to Toolbar') : undefined}
-            onClick={item.onPin}
-          >
-            {item.onPin && <Pin size={12} />}
-          </button>
-        )}
         {item.submenu && openSub === i && !item.disabled && (
           <div className="context-menu submenu" role="menu">
             <MenuItems items={item.submenu} close={close} />

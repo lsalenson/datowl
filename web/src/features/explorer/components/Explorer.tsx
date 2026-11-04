@@ -3,26 +3,19 @@ import {
   ChevronRight,
   ChevronsDownUp,
   ChevronsUpDown,
-  CircleDashed,
-  Cloud,
   Crosshair,
   Database,
   EllipsisVertical,
   Eye,
-  FileCode2,
-  Folder,
-  GitCompareArrows,
   LoaderCircle,
   Minus,
   Plug,
   Plus,
   RefreshCw,
-  ScrollText,
   Search,
   SlidersHorizontal,
   Square,
   SquareTerminal,
-  Stamp,
   Table2,
   X,
 } from 'lucide-react';
@@ -30,6 +23,7 @@ import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEve
 
 import { IconButton } from '@/shared/ui/IconButton';
 import { errorMessage, type ConnectionConfig, type DriverKind, type NodeIcon as Icon, type NodeRef, type ObjectRef } from '@/shared/api';
+import { formatShortcut } from '@/shared/lib/shortcuts';
 import { qualifiedName } from '@/shared/lib/sql';
 import { useConnections } from '@/features/connections';
 import { useUi, type MenuItem } from '@/shared/model/ui';
@@ -319,8 +313,13 @@ export function Explorer() {
       danger: true,
     });
     if (ok === null) return;
-    await useConnections.getState().remove(connection.id);
+    // Tabs go first: closing them must not write their consoles back after the deletion.
     workspace.forgetConnection(connection.id);
+    try {
+      await useConnections.getState().remove(connection.id);
+    } catch (e) {
+      await ask({ title: 'Could Not Delete the Data Source', message: errorMessage(e), confirmLabel: 'Close' });
+    }
   };
 
   const dropRow = async (row: Row) => {
@@ -337,13 +336,17 @@ export function Explorer() {
     }
     const sql = dropSql(target, connection.driver, signature);
     if (!sql) return;
+    // A whole schema or database is worth more than a keystroke.
+    const wide = target.kind === 'schema' || target.kind === 'database';
     const ok = await ask({
-      title: 'Drop',
+      title: `Drop ${titleCase(targetNoun(target))} ${targetName(target)}`,
       message: (
         <>
-          Drop {targetNoun(target)} <b>{targetName(target)}</b> from <b>{connection.name}</b>? This cannot be undone.
+          Drop {targetNoun(target)} <b>{targetName(target)}</b> from data source <b>{connection.name}</b> (
+          {connection.host}:{connection.port})? This cannot be undone.
         </>
       ),
+      input: wide ? { label: 'Type its name', value: '', matches: targetName(target) } : undefined,
       preview: `${sql};`,
       confirmLabel: 'Drop',
       danger: true,
@@ -357,7 +360,7 @@ export function Explorer() {
       const url = await ask({
         title: 'Data Source from URL',
         message: error || 'PostgreSQL (postgresql://, JDBC) or ClickHouse (clickhouse://, http(s)://, JDBC) URL.',
-        input: { label: 'URL', value: '', placeholder: 'postgresql://user:password@host:5432/database' },
+        input: { label: 'URL', value: '', placeholder: 'postgresql://user:password@host:5432/database', secret: true },
         confirmLabel: 'Continue',
       });
       if (url === null) return;
@@ -379,7 +382,6 @@ export function Explorer() {
       disabled: !connection,
       onSelect: () => connection && void workspace.newConsole(connection.id),
     },
-    { label: 'Query File…', icon: <FileCode2 size={14} />, shortcut: '⇧⌘J', disabled: true },
     { separator: true },
     {
       label: 'Data Source',
@@ -390,18 +392,10 @@ export function Explorer() {
         onSelect: () => openDataSources(`new:${driver}`),
       })),
     },
-    { label: 'Data Source from Cloud Provider', icon: <Cloud size={14} />, submenu: [], disabled: true },
-    { label: 'Data Source Templates', icon: <Stamp size={14} />, badge: 'Beta', disabled: true },
-    { label: 'Data Source from File/Folder', icon: <Folder size={14} />, disabled: true },
     { label: 'Data Source from URL', icon: <Plug size={14} />, onSelect: () => void addFromUrl() },
-    { label: 'DDL Data Source', icon: <ScrollText size={14} />, disabled: true },
-    { separator: true },
-    { label: 'Folder', icon: <Folder size={14} />, disabled: true },
-    { label: 'Driver', icon: <CircleDashed size={14} />, disabled: true },
   ];
 
-  // Same entries and order as DataGrip's Database Explorer context menu; what Datowl
-  // cannot do yet stays visible, greyed out.
+  // Only what applies to this node and works.
   const menuFor = (row: Row): MenuItem[] => {
     const { connection, object } = row;
     const connected = connectionState[connection.id]?.status === 'connected';
@@ -416,14 +410,13 @@ export function Explorer() {
 
     return [
       { label: 'New', icon: <Plus size={14} />, submenu: newItems(connection) },
-      { label: 'Modify Virtual View…', shortcut: '⌘F6', disabled: true },
       {
-        label: 'Copy/Paste',
+        label: 'Copy',
         submenu: [
           { label: 'Copy Name', onSelect: () => copy(object?.name ?? row.label) },
           ...(object
             ? [
-                { label: 'Copy Reference', shortcut: '⌥⇧⌘C', onSelect: () => copy(qualifiedName(object, connection.driver)) },
+                { label: 'Copy Reference', onSelect: () => copy(qualifiedName(object, connection.driver)) },
                 {
                   label: 'Copy SELECT Statement',
                   onSelect: () => copy(`SELECT * FROM ${qualifiedName(object, connection.driver)};`),
@@ -432,56 +425,41 @@ export function Explorer() {
             : []),
         ],
       },
-      {
-        label: 'Refresh',
-        icon: <RefreshCw size={14} />,
-        shortcut: '⌘R',
-        disabled: !row.node,
-        onSelect: () => row.node && void tree.refresh(row.key, connection.id, row.node),
-      },
-      { separator: true },
-      { label: 'Rename…', shortcut: '⇧F6', disabled: !renamable, onSelect: () => void renameRow(row) },
-      { separator: true },
+      ...(row.node
+        ? [
+            {
+              label: 'Refresh',
+              icon: <RefreshCw size={14} />,
+              onSelect: () => void tree.refresh(row.key, connection.id, row.node!),
+            },
+          ]
+        : []),
+      ...(renamable ? [{ label: 'Rename…', shortcut: '⇧F6', onSelect: () => void renameRow(row) }] : []),
       ...(object
         ? [
+            { separator: true },
             ...(object.kind !== 'function'
-              ? [{ label: 'Edit Data', shortcut: 'F4', onSelect: () => openData(connection, object) }]
+              ? [{ label: 'View Data', shortcut: 'F4', onSelect: () => openData(connection, object) }]
               : []),
             { label: 'Go to DDL', shortcut: '⌘B', onSelect: () => workspace.openObject('ddl', connection.id, object) },
           ]
-        : [{ label: 'Open the List', shortcut: '⌘↓', disabled: true }]),
-      { label: 'Quick Documentation', shortcut: 'F1', disabled: true },
-      { label: 'Compare Schema Structure', icon: <GitCompareArrows size={14} />, shortcut: '⌘D', disabled: true },
+        : []),
       { separator: true },
-      {
-        label: 'SQL Scripts',
-        submenu: [
-          {
-            label: 'Generate DDL to Query Console',
-            disabled: !object,
-            onSelect: () => object && workspace.openObject('ddl', connection.id, object),
-          },
-          { label: 'SQL Generator…', shortcut: '⌥⌘G', disabled: true },
-          { label: 'Run SQL Script…', disabled: true },
-        ],
-      },
       {
         label: 'Tools',
         submenu: [
           connected
             ? { label: 'Disconnect', onSelect: () => void disconnect() }
             : { label: 'Connect', onSelect: () => void tree.expand(rootKey(connection.id), connection.id, { type: 'root' }) },
-          { label: 'Jump to Query Console…', shortcut: '⇧⌘F10', onSelect: () => workspace.openConsole(connection.id) },
+          { label: 'Jump to Query Console…', onSelect: () => workspace.openConsole(connection.id) },
           { label: 'New Query Console', shortcut: '⇧⌘L', onSelect: () => void workspace.newConsole(connection.id) },
           { separator: true },
           { label: 'Data Source Properties…', shortcut: '⌘;', onSelect: () => openDataSources(connection.id) },
         ],
       },
-      { label: 'Diagrams', submenu: [], disabled: true },
-      { separator: true },
-      { label: 'Diagnostics', submenu: [], disabled: true },
-      { separator: true },
-      { label: 'Drop…', shortcut: '⌦', danger: droppable, disabled: !droppable, onSelect: () => void dropRow(row) },
+      ...(droppable
+        ? [{ separator: true }, { label: 'Drop…', shortcut: '⌦', danger: true, onSelect: () => void dropRow(row) }]
+        : []),
     ];
   };
 
@@ -513,6 +491,8 @@ export function Explorer() {
     } else if (e.key === 'Enter' && selectedRow) activate(selectedRow);
     else if ((e.metaKey || e.ctrlKey) && e.key === 'b' && selectedRow?.object) {
       workspace.openObject('ddl', selectedRow.connection.id, selectedRow.object);
+    } else if (e.key === 'F4' && selectedRow?.object && selectedRow.object.kind !== 'function') {
+      openData(selectedRow.connection, selectedRow.object);
     } else if (e.shiftKey && e.key === 'F6' && selectedRow) void renameRow(selectedRow);
     // ⌦, or ⌘⌫ on keyboards without forward delete.
     else if ((e.key === 'Delete' || (e.metaKey && e.key === 'Backspace')) && selectedRow) void dropRow(selectedRow);
@@ -567,7 +547,7 @@ export function Explorer() {
         <div className="card-actions">
           <IconButton icon={Crosshair} label="Select Opened Object" size={14} disabled={!locateKey} onClick={locate} />
           <IconButton icon={ChevronsUpDown} label="Expand Selected" size={14} disabled={!selectedRow?.node} onClick={() => selectedRow && toggle(selectedRow)} />
-          <IconButton icon={ChevronsDownUp} label="Collapse All" shortcut="⌘−" size={14} onClick={tree.collapseAll} />
+          <IconButton icon={ChevronsDownUp} label="Collapse All" size={14} onClick={tree.collapseAll} />
           <IconButton icon={EllipsisVertical} label="Options" size={14} onClick={optionsMenu} />
           <IconButton icon={Minus} label="Hide" size={14} onClick={() => setExplorerVisible(false)} />
         </div>
@@ -586,7 +566,6 @@ export function Explorer() {
         <IconButton
           icon={RefreshCw}
           label="Refresh"
-          shortcut="⌘R"
           size={14}
           disabled={!selectedRow?.node}
           onClick={() => selectedRow?.node && void tree.refresh(selectedRow.key, selectedRow.connection.id, selectedRow.node)}
@@ -601,7 +580,7 @@ export function Explorer() {
         <span className="toolbar-separator" />
         <IconButton
           icon={Table2}
-          label="Edit Data"
+          label="View Data"
           shortcut="F4"
           size={14}
           disabled={!selectedRow?.object || selectedRow.object.kind === 'function'}
@@ -610,7 +589,6 @@ export function Explorer() {
         <IconButton
           icon={SquareTerminal}
           label="Jump to Query Console"
-          shortcut="⇧⌘L"
           size={14}
           disabled={!selectedConnection}
           onClick={() => selectedConnection && workspace.openConsole(selectedConnection.id)}
@@ -618,7 +596,7 @@ export function Explorer() {
         <button
           type="button"
           className="text-btn"
-          title="Show DDL (⌘B)"
+          title={`Show DDL (${formatShortcut('⌘B')})`}
           disabled={!selectedRow?.object}
           onClick={() => selectedRow?.object && workspace.openObject('ddl', selectedRow.connection.id, selectedRow.object)}
         >
@@ -668,7 +646,7 @@ export function Explorer() {
       >
         {rows.length === 0 && !filter && (
           <div className="tree-empty">
-            <span>Create a data source with ⌘N</span>
+            <span>Create a data source with {formatShortcut('⌘N')}</span>
             <button type="button" className="link-btn" onClick={() => openDataSources('new')}>
               New data source…
             </button>
@@ -724,6 +702,19 @@ export function Explorer() {
                   </button>
                 )}
                 {row.detail && <span className="tree-detail">{row.detail}</span>}
+                {row.error && (
+                  <button
+                    type="button"
+                    className="link-btn tree-retry"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      const parent = parentOf(row);
+                      if (parent?.node) void tree.refresh(parent.key, parent.connection.id, parent.node);
+                    }}
+                  >
+                    Retry
+                  </button>
+                )}
               </div>
             );
           })}

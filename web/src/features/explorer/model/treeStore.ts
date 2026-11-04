@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 
-import { backend, errorMessage, type NodeRef, type TreeNode } from '@/shared/api';
+import { backend, errorMessage, isConnectionLost, type NodeRef, type TreeNode } from '@/shared/api';
 import { useConnections } from '@/features/connections';
 
 interface TreeStore {
@@ -23,7 +23,13 @@ export const childKey = (parent: string, child: TreeNode) => `${parent}/${child.
 export const useTree = create<TreeStore>((set, get) => {
   const load = async (key: string, connectionId: string, node: NodeRef) => {
     if (!(await useConnections.getState().ensureConnected(connectionId))) {
-      set((s) => ({ expanded: { ...s.expanded, [key]: false } }));
+      // A failure stays on screen under the node; giving up at the password prompt just closes it.
+      const failure = useConnections.getState().state[connectionId];
+      set((s) =>
+        failure?.status === 'error' && failure.error
+          ? { errors: { ...s.errors, [key]: failure.error } }
+          : { expanded: { ...s.expanded, [key]: false } },
+      );
       return;
     }
     set((s) => ({ loading: { ...s.loading, [key]: true } }));
@@ -40,7 +46,9 @@ export const useTree = create<TreeStore>((set, get) => {
         if (branches.length === 1) void get().expand(childKey(key, branches[0]), connectionId, branches[0].node!);
       }
     } catch (e) {
-      set((s) => ({ errors: { ...s.errors, [key]: errorMessage(e) }, loading: { ...s.loading, [key]: false } }));
+      set((s) => ({ loading: { ...s.loading, [key]: false } }));
+      if (isConnectionLost(e)) useConnections.getState().markLost(connectionId, errorMessage(e));
+      else set((s) => ({ errors: { ...s.errors, [key]: errorMessage(e) } }));
     }
   };
 
@@ -55,7 +63,14 @@ export const useTree = create<TreeStore>((set, get) => {
 
     expand: async (key, connectionId, node) => {
       set((s) => ({ expanded: { ...s.expanded, [key]: true } }));
-      if (!get().children[key] && !get().loading[key]) await load(key, connectionId, node);
+      if (!get().children[key] && !get().loading[key]) {
+        set((s) => {
+          const errors = { ...s.errors };
+          delete errors[key];
+          return { errors };
+        });
+        await load(key, connectionId, node);
+      }
     },
 
     collapse: (key) => set((s) => ({ expanded: { ...s.expanded, [key]: false } })),
@@ -81,8 +96,14 @@ export const useTree = create<TreeStore>((set, get) => {
   };
 });
 
-// Drop the cached tree of deleted data sources, wherever they were deleted from.
+// Drop the cached tree of deleted data sources, wherever they were deleted from, and of
+// sessions that ended: what it shows can no longer be refreshed or trusted.
 useConnections.subscribe((state, previous) => {
+  if (state.state !== previous.state) {
+    for (const [id, was] of Object.entries(previous.state)) {
+      if (was.status === 'connected' && state.state[id]?.status !== 'connected') useTree.getState().forget(id);
+    }
+  }
   if (state.list === previous.list) return;
   const ids = new Set(state.list.map((c) => c.id));
   for (const c of previous.list) if (!ids.has(c.id)) useTree.getState().forget(c.id);

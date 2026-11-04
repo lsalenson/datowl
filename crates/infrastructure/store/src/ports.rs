@@ -81,6 +81,10 @@ impl ProjectRepository for Projects {
         Ok(Projects::delete(self, id)?)
     }
 
+    fn take_notices(&self) -> Vec<String> {
+        Projects::take_notices(self)
+    }
+
     fn open(&self, id: Uuid) -> Result<ProjectStorage> {
         let store = Arc::new(self.open_project(id)?);
         Ok(ProjectStorage { data_sources: store.clone(), consoles: store })
